@@ -1,4 +1,4 @@
-use crate::error::{GwhsprError, Result};
+use crate::error::{WhisperTalkError, Result};
 use crate::paths::Paths;
 use crate::types::TranscriptionConfig;
 use whisper_rs::{WhisperContext, FullParams, WhisperContextParameters, SamplingStrategy};
@@ -61,7 +61,7 @@ impl WhisperBackend {
 
         let model_path_str = model_path
             .to_str()
-            .ok_or_else(|| GwhsprError::Transcription("Invalid model path".to_string()))?;
+            .ok_or_else(|| WhisperTalkError::Transcription("Invalid model path".to_string()))?;
 
         println!("Loading Whisper model from: {} (GPU: {})", model_path_str, self.use_gpu);
 
@@ -71,7 +71,7 @@ impl WhisperBackend {
         };
 
         let context = WhisperContext::new_with_params(model_path_str, context_params)
-            .map_err(|e| GwhsprError::Transcription(format!("Failed to load model: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Transcription(format!("Failed to load model: {}", e)))?;
 
         self.context = Some(context);
         Ok(true)
@@ -79,10 +79,10 @@ impl WhisperBackend {
 
     pub fn transcribe(&self, audio_data: &[f32]) -> Result<String> {
         let context = self.context.as_ref()
-            .ok_or_else(|| GwhsprError::Transcription("Model not loaded".to_string()))?;
+            .ok_or_else(|| WhisperTalkError::Transcription("Model not loaded".to_string()))?;
 
         let mut state = context.create_state()
-            .map_err(|e| GwhsprError::Transcription(format!("Failed to create state: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Transcription(format!("Failed to create state: {}", e)))?;
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 5 });
 
@@ -108,7 +108,7 @@ impl WhisperBackend {
         params.set_token_timestamps(false);
 
         state.full(params, audio_data)
-            .map_err(|e| GwhsprError::Transcription(format!("Transcription failed: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Transcription(format!("Transcription failed: {}", e)))?;
 
         let mut transcription = String::new();
         let num_segments = state.full_n_segments();
@@ -162,15 +162,15 @@ impl WhisperBackend {
             }
         }
 
-        Err(GwhsprError::ModelNotFound(format!("Model '{}' not found in any search path", self.model_name)))
+        Err(WhisperTalkError::ModelNotFound(format!("Model '{}' not found in any search path", self.model_name)))
     }
 
     fn download_model(&self, target_path: &PathBuf) -> Result<()> {
         let model_filename = target_path
             .file_name()
-            .ok_or_else(|| GwhsprError::Transcription("Invalid model filename".to_string()))?
+            .ok_or_else(|| WhisperTalkError::Transcription("Invalid model filename".to_string()))?
             .to_str()
-            .ok_or_else(|| GwhsprError::Transcription("Invalid model filename encoding".to_string()))?;
+            .ok_or_else(|| WhisperTalkError::Transcription("Invalid model filename encoding".to_string()))?;
 
         let url = format!(
             "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
@@ -183,14 +183,14 @@ impl WhisperBackend {
             .timeout(Duration::from_secs(DOWNLOAD_TIMEOUT_SECONDS))
             .user_agent("gwhpr/0.1.0")
             .build()
-            .map_err(|e| GwhsprError::Transcription(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Transcription(format!("Failed to create HTTP client: {}", e)))?;
 
         let parent_dir = target_path
             .parent()
-            .ok_or_else(|| GwhsprError::Transcription("Invalid model path parent".to_string()))?;
+            .ok_or_else(|| WhisperTalkError::Transcription("Invalid model path parent".to_string()))?;
 
         fs::create_dir_all(parent_dir)
-            .map_err(|e| GwhsprError::Transcription(format!("Failed to create models directory: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Transcription(format!("Failed to create models directory: {}", e)))?;
 
         let mut last_error = None;
 
@@ -213,7 +213,7 @@ impl WhisperBackend {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| GwhsprError::Transcription("Download failed".to_string())))
+        Err(last_error.unwrap_or_else(|| WhisperTalkError::Transcription("Download failed".to_string())))
     }
 
     fn download_with_progress(
@@ -225,10 +225,10 @@ impl WhisperBackend {
         let response = client
             .get(url)
             .send()
-            .map_err(|e| GwhsprError::Transcription(format!("Failed to start download: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Transcription(format!("Failed to start download: {}", e)))?;
 
         if !response.status().is_success() {
-            return Err(GwhsprError::Transcription(format!(
+            return Err(WhisperTalkError::Transcription(format!(
                 "HTTP error downloading model: {}",
                 response.status()
             )));
@@ -239,7 +239,7 @@ impl WhisperBackend {
             .unwrap_or(0);
 
         let file = File::create(target_path)
-            .map_err(|e| GwhsprError::Transcription(format!("Failed to create file: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Transcription(format!("Failed to create file: {}", e)))?;
 
         let mut writer = BufWriter::new(file);
         let mut downloaded = 0u64;
@@ -247,13 +247,13 @@ impl WhisperBackend {
 
         let bytes = response
             .bytes()
-            .map_err(|e| GwhsprError::Transcription(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Transcription(format!("Failed to read response: {}", e)))?;
 
         let chunk_size = 8192;
 
         for chunk in bytes.chunks(chunk_size) {
             writer.write_all(chunk)
-                .map_err(|e| GwhsprError::Transcription(format!("Failed to write chunk: {}", e)))?;
+                .map_err(|e| WhisperTalkError::Transcription(format!("Failed to write chunk: {}", e)))?;
 
             downloaded += chunk.len() as u64;
 
@@ -267,7 +267,7 @@ impl WhisperBackend {
         }
 
         writer.flush()
-            .map_err(|e| GwhsprError::Transcription(format!("Failed to flush file: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Transcription(format!("Failed to flush file: {}", e)))?;
 
         println!("Model download complete");
         Ok(())

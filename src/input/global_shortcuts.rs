@@ -1,4 +1,4 @@
-use crate::error::{GwhsprError, Result};
+use crate::error::{WhisperTalkError, Result};
 use crate::types::RecordingMode;
 use evdev::{Device, KeyCode};
 use parking_lot::Mutex;
@@ -77,7 +77,7 @@ impl GlobalShortcuts {
         let mut candidates: Vec<(std::path::PathBuf, String, usize, bool)> = Vec::new();
 
         let entries: Vec<_> = std::fs::read_dir("/dev/input")
-            .map_err(|e| GwhsprError::Input(format!("Failed to read /dev/input: {}", e)))?
+            .map_err(|e| WhisperTalkError::Input(format!("Failed to read /dev/input: {}", e)))?
             .filter_map(|e| e.ok())
             .collect();
 
@@ -136,7 +136,7 @@ impl GlobalShortcuts {
     fn parse_shortcut(shortcut_str: &str) -> Result<Shortcut> {
         let parts: Vec<&str> = shortcut_str.split('+').collect();
         if parts.is_empty() {
-            return Err(GwhsprError::Input("Invalid shortcut format".to_string()));
+            return Err(WhisperTalkError::Input("Invalid shortcut format".to_string()));
         }
 
         let mut modifiers = Vec::new();
@@ -146,7 +146,7 @@ impl GlobalShortcuts {
                 "ALT" | "LALT" => KeyCode::KEY_LEFTALT,
                 "SHIFT" | "LSHIFT" => KeyCode::KEY_LEFTSHIFT,
                 "SUPER" | "META" | "LSUPER" => KeyCode::KEY_LEFTMETA,
-                _ => return Err(GwhsprError::Input(format!("Unknown modifier: {}", part))),
+                _ => return Err(WhisperTalkError::Input(format!("Unknown modifier: {}", part))),
             };
             modifiers.push(modifier);
         }
@@ -161,7 +161,7 @@ impl GlobalShortcuts {
                 if key_part.len() == 1 {
                     Self::char_to_key(key_part.chars().next().unwrap())?
                 } else {
-                    return Err(GwhsprError::Input(format!("Unknown key: {}", key_part)));
+                    return Err(WhisperTalkError::Input(format!("Unknown key: {}", key_part)));
                 }
             }
         };
@@ -207,7 +207,7 @@ impl GlobalShortcuts {
             '7' => Ok(KeyCode::KEY_7),
             '8' => Ok(KeyCode::KEY_8),
             '9' => Ok(KeyCode::KEY_9),
-            _ => Err(GwhsprError::Input(format!("Unsupported character: {}", c))),
+            _ => Err(WhisperTalkError::Input(format!("Unsupported character: {}", c))),
         }
     }
 
@@ -219,7 +219,7 @@ impl GlobalShortcuts {
         *is_running = true;
         drop(is_running);
 
-        let device = self.device.clone().ok_or(GwhsprError::Input("No device".to_string()))?;
+        let device = self.device.clone().ok_or(WhisperTalkError::Input("No device".to_string()))?;
         let shortcut = self.shortcut.clone();
         let on_press = self.on_press.clone();
         let on_release = self.on_release.clone();

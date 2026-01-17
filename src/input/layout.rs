@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::error::{GwhsprError, Result};
+use crate::error::{WhisperTalkError, Result};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use serde::Deserialize;
@@ -33,21 +33,21 @@ impl KeyboardLayout {
             .output()
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    GwhsprError::Input("Hyprland not running or hyprctl not available".to_string())
+                    WhisperTalkError::Input("Hyprland not running or hyprctl not available".to_string())
                 } else {
-                    GwhsprError::Input(format!("Failed to execute hyprctl: {}", e))
+                    WhisperTalkError::Input(format!("Failed to execute hyprctl: {}", e))
                 }
             })?;
 
         if !output.status.success() {
-            return Err(GwhsprError::Input(format!(
+            return Err(WhisperTalkError::Input(format!(
                 "hyprctl failed: {}",
                 String::from_utf8_lossy(&output.stderr)
             )));
         }
 
         let devices: HyprlandDevices = serde_json::from_slice(&output.stdout)
-            .map_err(|e| GwhsprError::Input(format!("Failed to parse hyprctl output: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Input(format!("Failed to parse hyprctl output: {}", e)))?;
 
         let keymap = devices
             .keyboards
@@ -128,14 +128,14 @@ impl KeyboardLayout {
 
         let output = cmd.output().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
-                GwhsprError::Input("xkbcli not available".to_string())
+                WhisperTalkError::Input("xkbcli not available".to_string())
             } else {
-                GwhsprError::Input(format!("Failed to execute xkbcli: {}", e))
+                WhisperTalkError::Input(format!("Failed to execute xkbcli: {}", e))
             }
         })?;
 
         if !output.status.success() {
-            return Err(GwhsprError::Input(format!(
+            return Err(WhisperTalkError::Input(format!(
                 "xkbcli failed: {}",
                 String::from_utf8_lossy(&output.stderr)
             )));

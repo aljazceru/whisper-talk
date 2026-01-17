@@ -47,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run_daemon() -> anyhow::Result<()> {
-    info!("gwhspr-rs daemon starting...");
+    info!("whisper-talk daemon starting...");
 
     // Load config from file
     let paths = Paths::new()?;
@@ -107,7 +107,7 @@ async fn run_daemon() -> anyhow::Result<()> {
 
     app.stop().await?;
 
-    info!("gwhspr-rs daemon stopped");
+    info!("whisper-talk daemon stopped");
 
     Ok(())
 }

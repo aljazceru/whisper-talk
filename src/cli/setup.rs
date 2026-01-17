@@ -20,7 +20,7 @@ impl SetupWizard {
     pub fn run(&self) -> Result<()> {
         println!();
         println!("╔════════════════════════════════════════════════════════════════╗");
-        println!("║                     gwhspr Setup                               ║");
+        println!("║                  Whisper Talk Setup                             ║");
         println!("╚════════════════════════════════════════════════════════════════╝");
         println!();
 
@@ -70,8 +70,8 @@ impl SetupWizard {
         println!();
         println!("Setup complete!");
         println!();
-        println!("Start with:  gwhspr daemon");
-        println!("Or enable:   systemctl --user enable --now gwhspr");
+        println!("Start with:  whisper-talk daemon");
+        println!("Or enable:   systemctl --user enable --now whisper-talk");
         println!();
 
         Ok(())
@@ -144,7 +144,7 @@ impl SetupWizard {
     fn select_audio_device(&self) -> Result<AudioConfig> {
         println!();
         println!("--- Audio Device ---");
-        println!("By default, gwhspr uses your system's default microphone.");
+        println!("By default, whisper-talk uses your system's default microphone.");
 
         let use_default = Confirm::new()
             .with_prompt("Use system default microphone?")
@@ -208,7 +208,7 @@ impl SetupWizard {
         println!("║              System Permissions Setup Commands                 ║");
         println!("╚═══════════════════════════════════════════════════════════════╝");
         println!();
-        println!("For gwhspr to work properly, your user needs the following permissions:");
+        println!("For whisper-talk to work properly, your user needs the following permissions:");
         println!();
         println!("1. ydotool group (for text injection):");
         println!("   sudo groupadd ydotool");
@@ -247,16 +247,16 @@ impl SetupWizard {
 
     fn install_systemd_service(&self, _paths: &Paths) -> Result<()> {
         let service_dir = std::path::PathBuf::from("/etc/systemd/user");
-        let service_file = service_dir.join("gwhspr.service");
+        let service_file = service_dir.join("whisper-talk.service");
 
         let service_content = format!(
             r#"[Unit]
-Description=gwhspr Voice Dictation
+Description=Whisper Talk Voice Dictation
 After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/gwhspr daemon
+ExecStart=/usr/bin/whisper-talk daemon
 Restart=on-failure
 RestartSec=5
 
@@ -273,19 +273,19 @@ WantedBy=default.target
             .map_err(|e| anyhow::anyhow!("Failed to create service directory: {}", e))?
             .success()
         {
-            let service_path = std::path::PathBuf::from("/tmp/gwhspr.service");
+            let service_path = std::path::PathBuf::from("/tmp/whisper-talk.service");
             std::fs::write(&service_path, &service_content)?;
 
             println!();
             println!("To install the systemd service, run the following commands:");
             println!();
-            println!("  sudo cp /tmp/gwhspr.service /etc/systemd/user/gwhspr.service");
+            println!("  sudo cp /tmp/whisper-talk.service /etc/systemd/user/whisper-talk.service");
             println!("  systemctl --user daemon-reload");
-            println!("  systemctl --user enable gwhspr");
-            println!("  systemctl --user start gwhspr");
+            println!("  systemctl --user enable whisper-talk");
+            println!("  systemctl --user start whisper-talk");
             println!();
             println!("To check the service status:");
-            println!("  systemctl --user status gwhspr");
+            println!("  systemctl --user status whisper-talk");
             println!();
             println!("Service file created at: {}", service_path.display());
         } else {
@@ -296,7 +296,7 @@ WantedBy=default.target
             println!("{}", service_content);
             println!("EOF");
             println!("  systemctl --user daemon-reload");
-            println!("  systemctl --user enable gwhspr");
+            println!("  systemctl --user enable whisper-talk");
         }
 
         Ok(())

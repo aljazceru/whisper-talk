@@ -161,7 +161,7 @@ fn run_backend_reset(paths: &Paths) -> Result<()> {
         println!("\nNo state files to clear.");
     }
 
-    println!("\nNote: Models are preserved. Use 'gwhspr model status' to see downloaded models.");
+    println!("\nNote: Models are preserved. Use 'whisper-talk model status' to see downloaded models.");
 
     Ok(())
 }

@@ -11,9 +11,9 @@ pub struct WaybarArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum WaybarCommands {
-    /// Install the gwhspr Waybar module
+    /// Install the whisper-talk Waybar module
     Install,
-    /// Remove the gwhspr Waybar module
+    /// Remove the whisper-talk Waybar module
     Remove,
     /// Check if the Waybar module is installed
     Status,

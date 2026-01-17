@@ -19,9 +19,9 @@ pub enum SystemdCommands {
     Restart,
 }
 
-const SERVICE_NAME: &str = "gwhspr.service";
+const SERVICE_NAME: &str = "whisper-talk.service";
 const SYSTEMD_USER_DIR: &str = ".config/systemd/user";
-const LOCAL_BIN: &str = "/usr/local/bin/gwhspr";
+const LOCAL_BIN: &str = "/usr/local/bin/whisper-talk";
 
 fn get_systemd_user_dir() -> Result<PathBuf> {
     let home = std::env::var("HOME").context("HOME environment variable not set")?;
@@ -34,7 +34,7 @@ fn get_service_template_path() -> Result<PathBuf> {
     let base_dir = exe_path
         .parent()
         .context("Failed to get parent directory")?;
-    let template_path = base_dir.join("../../share/systemd/gwhspr.service");
+    let template_path = base_dir.join("../../share/systemd/whisper-talk.service");
     Ok(template_path)
 }
 

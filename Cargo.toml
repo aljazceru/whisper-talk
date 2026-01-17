@@ -1,10 +1,10 @@
 [package]
-name = "gwhspr"
+name = "whisper-talk"
 version = "0.1.0"
 edition = "2021"
-authors = ["Goodroot <goodroot@goodroot.dev>"]
+authors = ["Aljaz Ceru <aljaz@disobey.dev>"]
 description = "System-wide voice dictation for Linux with Whisper and Parakeet backends"
-repository = "https://github.com/goodroot/gwhspr"
+repository = "https://github.com/aljazceru/whisper-talk"
 license = "MIT"
 readme = "README.md"
 keywords = ["voice", "dictation", "whisper", "speech-recognition", "wayland"]

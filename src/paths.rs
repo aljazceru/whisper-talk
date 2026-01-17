@@ -21,7 +21,7 @@ pub struct Paths {
 
 impl Paths {
     pub fn new() -> anyhow::Result<Self> {
-        let proj_dirs = directories::ProjectDirs::from("com.github.goodroot", "goodroot", "gwhspr")
+        let proj_dirs = directories::ProjectDirs::from("com.github.aljazceru", "aljazceru", "whisper-talk")
             .ok_or_else(|| anyhow::anyhow!("Failed to get project directories"))?;
 
         let home = dirs::home_dir()
@@ -66,7 +66,7 @@ impl Paths {
     }
 
     fn find_assets_dir() -> PathBuf {
-        if let Ok(root) = std::env::var("GWHSPR_ROOT") {
+        if let Ok(root) = std::env::var("WHISPER_TALK_ROOT") {
             let dir = PathBuf::from(root).join("share").join("assets");
             if dir.exists() {
                 return dir;

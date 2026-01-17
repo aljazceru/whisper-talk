@@ -1,4 +1,4 @@
-use crate::error::{GwhsprError, Result};
+use crate::error::{WhisperTalkError, Result};
 use crate::paths::Paths;
 use crate::types::FeedbackConfig;
 use parking_lot::Mutex;
@@ -24,7 +24,7 @@ unsafe impl Sync for AudioFeedback {}
 impl AudioFeedback {
     pub fn new(feedback_config: &FeedbackConfig, paths: &Paths) -> Result<Self> {
         let (stream, stream_handle) = OutputStream::try_default()
-            .map_err(|e| GwhsprError::Audio(format!("Failed to create output stream: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Audio(format!("Failed to create output stream: {}", e)))?;
 
         Ok(Self {
             config: Arc::new(Mutex::new(feedback_config.clone())),
@@ -117,13 +117,13 @@ impl AudioFeedback {
         }
 
         let file = File::open(path)
-            .map_err(|e| GwhsprError::Audio(format!("Failed to open sound file: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Audio(format!("Failed to open sound file: {}", e)))?;
 
         let source = Decoder::new_vorbis(BufReader::new(file))
-            .map_err(|e| GwhsprError::Audio(format!("Failed to decode audio: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Audio(format!("Failed to decode audio: {}", e)))?;
 
         let sink = Sink::try_new(&self.stream_handle)
-            .map_err(|e| GwhsprError::Audio(format!("Failed to create sink: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Audio(format!("Failed to create sink: {}", e)))?;
 
         let config = self.config.lock();
         let master_volume = config.master_volume;

@@ -24,7 +24,7 @@ pub struct UninstallArgs {
 pub fn run_uninstall(args: UninstallArgs) -> Result<()> {
     let paths = Paths::new()?;
 
-    println!("gwhspr Uninstall\n");
+    println!("whisper-talk Uninstall\n");
     println!("{}", "=".repeat(50));
 
     // Show what will be removed
@@ -32,8 +32,8 @@ pub fn run_uninstall(args: UninstallArgs) -> Result<()> {
     println!("  - Configuration files: {}", paths.config_dir.display());
     println!("  - State files: {}", paths.state_dir.display());
     println!("  - Data files: {}", paths.data_dir.display());
-    println!("  - Systemd service: ~/.config/systemd/user/gwhspr.service");
-    println!("  - Waybar module: ~/.local/share/gwhspr/waybar/");
+    println!("  - Systemd service: ~/.config/systemd/user/whisper-talk.service");
+    println!("  - Waybar module: ~/.local/share/whisper-talk/waybar/");
 
     if !args.keep_models {
         println!("  - Downloaded models: {}", paths.models_dir.display());
@@ -50,7 +50,7 @@ pub fn run_uninstall(args: UninstallArgs) -> Result<()> {
     // Confirm unless --yes
     if !args.yes {
         let confirmed = Confirm::new()
-            .with_prompt("Are you sure you want to uninstall gwhspr?")
+            .with_prompt("Are you sure you want to uninstall whisper-talk?")
             .default(false)
             .interact()?;
 
@@ -65,17 +65,17 @@ pub fn run_uninstall(args: UninstallArgs) -> Result<()> {
     // Stop daemon if running
     println!("Stopping daemon...");
     let _ = Command::new("systemctl")
-        .args(["--user", "stop", "gwhspr"])
+        .args(["--user", "stop", "whisper-talk"])
         .status();
 
     // Disable and remove systemd service
     println!("Removing systemd service...");
     let _ = Command::new("systemctl")
-        .args(["--user", "disable", "gwhspr"])
+        .args(["--user", "disable", "whisper-talk"])
         .status();
 
     if let Some(home) = dirs::home_dir() {
-        let service_path = home.join(".config/systemd/user/gwhspr.service");
+        let service_path = home.join(".config/systemd/user/whisper-talk.service");
         if service_path.exists() {
             fs::remove_file(&service_path)?;
             println!("  Removed: {}", service_path.display());
@@ -86,7 +86,7 @@ pub fn run_uninstall(args: UninstallArgs) -> Result<()> {
     println!("Removing Waybar module...");
     if let Some(home) = dirs::home_dir() {
         // Remove module script
-        let waybar_script = home.join(".local/share/gwhspr/waybar");
+        let waybar_script = home.join(".local/share/whisper-talk/waybar");
         if waybar_script.exists() {
             fs::remove_dir_all(&waybar_script)?;
             println!("  Removed: {}", waybar_script.display());
@@ -96,7 +96,7 @@ pub fn run_uninstall(args: UninstallArgs) -> Result<()> {
         let waybar_config = home.join(".config/waybar/config");
         if waybar_config.exists() {
             if let Ok(content) = fs::read_to_string(&waybar_config) {
-                if content.contains("custom/gwhspr") {
+                if content.contains("custom/whisper-talk") {
                     // Use the waybar removal function
                     let _ = crate::integration::waybar::handle_waybar(
                         crate::integration::waybar::WaybarCommand::Remove
@@ -157,7 +157,7 @@ pub fn run_uninstall(args: UninstallArgs) -> Result<()> {
     }
 
     println!("\n{}", "=".repeat(50));
-    println!("\ngwhspr has been uninstalled.");
+    println!("\nwhisper-talk has been uninstalled.");
 
     if args.keep_models {
         println!("\nModels were preserved at: {}", paths.models_dir.display());

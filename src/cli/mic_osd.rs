@@ -38,7 +38,7 @@ fn run_mic_osd_enable(paths: &Paths) -> Result<()> {
 
     println!("Mic OSD enabled");
     println!("\nThe microphone visualization overlay will appear when recording.");
-    println!("Restart the daemon to apply changes: systemctl restart --user gwhspr");
+    println!("Restart the daemon to apply changes: systemctl restart --user whisper-talk");
 
     Ok(())
 }
@@ -50,7 +50,7 @@ fn run_mic_osd_disable(paths: &Paths) -> Result<()> {
     config_manager.save()?;
 
     println!("Mic OSD disabled");
-    println!("\nRestart the daemon to apply changes: systemctl restart --user gwhspr");
+    println!("\nRestart the daemon to apply changes: systemctl restart --user whisper-talk");
 
     Ok(())
 }

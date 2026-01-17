@@ -1,9 +1,9 @@
 use thiserror::Error;
 
-pub type Result<T> = std::result::Result<T, GwhsprError>;
+pub type Result<T> = std::result::Result<T, WhisperTalkError>;
 
 #[derive(Error, Debug)]
-pub enum GwhsprError {
+pub enum WhisperTalkError {
     #[error("Configuration error: {0}")]
     Config(String),
 
@@ -42,32 +42,32 @@ pub enum GwhsprError {
     InvalidConfig(String),
 }
 
-impl From<anyhow::Error> for GwhsprError {
+impl From<anyhow::Error> for WhisperTalkError {
     fn from(err: anyhow::Error) -> Self {
-        GwhsprError::System(err.to_string())
+        WhisperTalkError::System(err.to_string())
     }
 }
 
-impl From<tokio::task::JoinError> for GwhsprError {
+impl From<tokio::task::JoinError> for WhisperTalkError {
     fn from(err: tokio::task::JoinError) -> Self {
-        GwhsprError::System(err.to_string())
+        WhisperTalkError::System(err.to_string())
     }
 }
 
-impl From<cpal::BuildStreamError> for GwhsprError {
+impl From<cpal::BuildStreamError> for WhisperTalkError {
     fn from(err: cpal::BuildStreamError) -> Self {
-        GwhsprError::Audio(err.to_string())
+        WhisperTalkError::Audio(err.to_string())
     }
 }
 
-impl From<cpal::PlayStreamError> for GwhsprError {
+impl From<cpal::PlayStreamError> for WhisperTalkError {
     fn from(err: cpal::PlayStreamError) -> Self {
-        GwhsprError::Audio(err.to_string())
+        WhisperTalkError::Audio(err.to_string())
     }
 }
 
-impl From<zbus::Error> for GwhsprError {
+impl From<zbus::Error> for WhisperTalkError {
     fn from(err: zbus::Error) -> Self {
-        GwhsprError::System(err.to_string())
+        WhisperTalkError::System(err.to_string())
     }
 }

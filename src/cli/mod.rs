@@ -27,7 +27,7 @@ mod validate;
 mod uninstall;
 
 #[derive(Parser, Debug)]
-#[command(name = "gwhspr")]
+#[command(name = "whisper-talk")]
 #[command(about = "System-wide voice dictation for Linux", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]

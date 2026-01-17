@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-STATE_DIR = Path.home() / ".local/state/gwhspr"
+STATE_DIR = Path.home() / ".local/state/whisper-talk"
 RECORDING_STATUS_FILE = STATE_DIR / "recording_status"
 AUDIO_LEVEL_FILE = STATE_DIR / "audio_level"
 

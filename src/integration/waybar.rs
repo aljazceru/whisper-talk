@@ -24,17 +24,17 @@ pub fn handle_waybar(command: WaybarCommand) -> Result<()> {
 
 fn get_waybar_config_path() -> Result<PathBuf> {
     let home = dirs::home_dir().ok_or_else(|| {
-        crate::error::GwhsprError::System("Home directory not found".to_string())
+        crate::error::WhisperTalkError::System("Home directory not found".to_string())
     })?;
     Ok(home.join(".config/waybar/config"))
 }
 
 fn get_waybar_module_script_path() -> Result<PathBuf> {
     let home = dirs::home_dir().ok_or_else(|| {
-        crate::error::GwhsprError::System("Home directory not found".to_string())
+        crate::error::WhisperTalkError::System("Home directory not found".to_string())
     })?;
     
-    let script_path = home.join(".local/share/gwhspr/waybar/gwhspr.py");
+    let script_path = home.join(".local/share/whisper-talk/waybar/whisper-talk.py");
     
     let script_dir = script_path.parent().unwrap();
     fs::create_dir_all(script_dir)?;
@@ -46,7 +46,7 @@ fn install_waybar_module() -> Result<()> {
     let config_path = get_waybar_config_path()?;
     
     if !config_path.exists() {
-        return Err(crate::error::GwhsprError::System(
+        return Err(crate::error::WhisperTalkError::System(
             "Waybar config not found. Is Waybar installed?".to_string()
         ));
     }
@@ -59,7 +59,7 @@ import os
 import sys
 from pathlib import Path
 
-STATE_DIR = Path.home() / ".local/state/gwhspr"
+STATE_DIR = Path.home() / ".local/state/whisper-talk"
 RECORDING_STATUS_FILE = STATE_DIR / "recording_status"
 AUDIO_LEVEL_FILE = STATE_DIR / "audio_level"
 
@@ -115,11 +115,11 @@ if __name__ == "__main__":
     
     let config_content = fs::read_to_string(&config_path)?;
     let mut config: JsonValue = serde_json::from_str(&config_content)
-        .map_err(|e| crate::error::GwhsprError::System(format!("Failed to parse Waybar config: {}", e)))?;
+        .map_err(|e| crate::error::WhisperTalkError::System(format!("Failed to parse Waybar config: {}", e)))?;
     
     if let Some(modules_array) = config.get_mut("modules") {
         if let Some(modules) = modules_array.as_array_mut() {
-            let module_name = "custom/gwhspr";
+            let module_name = "custom/whisper-talk";
             if !modules.iter().any(|m| m.as_str() == Some(module_name)) {
                 modules.push(json!(module_name));
             }
@@ -128,7 +128,7 @@ if __name__ == "__main__":
     
     if let Some(modules_obj) = config.get_mut("modules-right") {
         if let Some(modules) = modules_obj.as_array_mut() {
-            let module_name = "custom/gwhspr";
+            let module_name = "custom/whisper-talk";
             if !modules.iter().any(|m| m.as_str() == Some(module_name)) {
                 modules.push(json!(module_name));
             }
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     
     if let Some(modules_obj) = config.get_mut("modules-center") {
         if let Some(modules) = modules_obj.as_array_mut() {
-            let module_name = "custom/gwhspr";
+            let module_name = "custom/whisper-talk";
             if !modules.iter().any(|m| m.as_str() == Some(module_name)) {
                 modules.push(json!(module_name));
             }
@@ -146,7 +146,7 @@ if __name__ == "__main__":
     
     if let Some(modules_obj) = config.get_mut("modules-left") {
         if let Some(modules) = modules_obj.as_array_mut() {
-            let module_name = "custom/gwhspr";
+            let module_name = "custom/whisper-talk";
             if !modules.iter().any(|m| m.as_str() == Some(module_name)) {
                 modules.push(json!(module_name));
             }
@@ -154,7 +154,7 @@ if __name__ == "__main__":
     }
     
     let module_config = json!({
-        "custom/gwhspr": {
+        "custom/whisper-talk": {
             "exec": script_path.to_string_lossy().to_string(),
             "return-type": "json",
             "format": "🎙️ {}",
@@ -181,16 +181,16 @@ fn remove_waybar_module() -> Result<()> {
     let config_path = get_waybar_config_path()?;
     
     if !config_path.exists() {
-        return Err(crate::error::GwhsprError::System(
+        return Err(crate::error::WhisperTalkError::System(
             "Waybar config not found".to_string()
         ));
     }
     
     let config_content = fs::read_to_string(&config_path)?;
     let mut config: JsonValue = serde_json::from_str(&config_content)
-        .map_err(|e| crate::error::GwhsprError::System(format!("Failed to parse Waybar config: {}", e)))?;
+        .map_err(|e| crate::error::WhisperTalkError::System(format!("Failed to parse Waybar config: {}", e)))?;
     
-    let module_name = "custom/gwhspr";
+    let module_name = "custom/whisper-talk";
     
     if let Some(modules_array) = config.get_mut("modules") {
         if let Some(modules) = modules_array.as_array_mut() {
@@ -240,9 +240,9 @@ fn check_status() -> Result<bool> {
     
     let config_content = fs::read_to_string(&config_path)?;
     let config: JsonValue = serde_json::from_str(&config_content)
-        .map_err(|e| crate::error::GwhsprError::System(format!("Failed to parse Waybar config: {}", e)))?;
+        .map_err(|e| crate::error::WhisperTalkError::System(format!("Failed to parse Waybar config: {}", e)))?;
     
-    let module_name = "custom/gwhspr";
+    let module_name = "custom/whisper-talk";
     
     let in_modules = config.get("modules")
         .and_then(|m| m.as_array())

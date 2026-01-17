@@ -49,7 +49,7 @@ impl DeviceMonitor {
         let start_time = self.start_time.unwrap();
 
         let handle = thread::Builder::new()
-            .name("gwhspr-device-monitor".to_string())
+            .name("whisper-talk-device-monitor".to_string())
             .spawn(move || {
                 // Build the monitor using MonitorBuilder
                 let socket = match udev::MonitorBuilder::new() {

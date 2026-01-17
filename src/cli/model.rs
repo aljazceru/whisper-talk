@@ -107,7 +107,7 @@ fn run_model_download(name: &str, force: bool, paths: &Paths) -> Result<()> {
     download_with_progress(&url, &target_path)?;
 
     println!("\nModel '{}' downloaded successfully!", model_name);
-    println!("You can now use it with: gwhspr config set transcription.model {}", model_name);
+    println!("You can now use it with: whisper-talk config set transcription.model {}", model_name);
 
     Ok(())
 }
@@ -176,8 +176,8 @@ fn run_model_status(paths: &Paths) -> Result<()> {
 
     if found_models.is_empty() {
         println!("No models found.");
-        println!("\nRun 'gwhspr model download <name>' to download a model.");
-        println!("Run 'gwhspr model list' to see available models.");
+        println!("\nRun 'whisper-talk model download <name>' to download a model.");
+        println!("Run 'whisper-talk model list' to see available models.");
     } else {
         println!("Downloaded models:\n");
         println!("{:<20} {:<10} {}", "MODEL", "SIZE", "PATH");
@@ -204,7 +204,7 @@ fn find_existing_model(paths: &Paths, filename: &str) -> Option<PathBuf> {
 fn download_with_progress(url: &str, target_path: &PathBuf) -> Result<()> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(DOWNLOAD_TIMEOUT_SECONDS))
-        .user_agent("gwhspr/0.1.0")
+        .user_agent("whisper-talk/0.1.0")
         .build()?;
 
     let mut last_error = None;

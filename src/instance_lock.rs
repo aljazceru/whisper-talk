@@ -1,4 +1,4 @@
-use crate::error::{GwhsprError, Result};
+use crate::error::{WhisperTalkError, Result};
 use std::fs::File;
 use std::os::unix::io::AsRawFd;
 
@@ -13,13 +13,13 @@ impl InstanceLock {
             .write(true)
             .create(true)
             .open(lock_file_path)
-            .map_err(|e| GwhsprError::System(format!("Failed to open lock file: {}", e)))?;
+            .map_err(|e| WhisperTalkError::System(format!("Failed to open lock file: {}", e)))?;
 
         let fd = file.as_raw_fd();
         let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
 
         if result != 0 {
-            return Err(GwhsprError::AlreadyRunning);
+            return Err(WhisperTalkError::AlreadyRunning);
         }
 
         Ok(Self { file: Some(file) })

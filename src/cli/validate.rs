@@ -18,7 +18,7 @@ pub fn run_validate(args: ValidateArgs) -> Result<()> {
     let mut issues = Vec::new();
     let mut warnings = Vec::new();
 
-    println!("Validating gwhspr installation...\n");
+    println!("Validating whisper-talk installation...\n");
 
     // Check configuration file
     if !paths.config_file.exists() {
@@ -138,13 +138,13 @@ pub fn run_validate(args: ValidateArgs) -> Result<()> {
 
     // Check systemd service
     let service_path = dirs::home_dir()
-        .map(|h| h.join(".config/systemd/user/gwhspr.service"));
+        .map(|h| h.join(".config/systemd/user/whisper-talk.service"));
 
     if let Some(path) = service_path {
         if path.exists() {
             println!("✓ Systemd service installed");
         } else {
-            warnings.push("Systemd service not installed (run 'gwhspr systemd install')".to_string());
+            warnings.push("Systemd service not installed (run 'whisper-talk systemd install')".to_string());
         }
     }
 
@@ -169,7 +169,7 @@ pub fn run_validate(args: ValidateArgs) -> Result<()> {
         }
 
         if !args.fix && !issues.is_empty() {
-            println!("\nRun 'gwhspr validate --fix' to attempt automatic fixes.");
+            println!("\nRun 'whisper-talk validate --fix' to attempt automatic fixes.");
         }
     }
 

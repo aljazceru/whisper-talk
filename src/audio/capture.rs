@@ -1,4 +1,4 @@
-use crate::error::{GwhsprError, Result};
+use crate::error::{WhisperTalkError, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Sample, SampleFormat, StreamConfig};
 use parking_lot::Mutex;
@@ -73,7 +73,7 @@ impl AudioCapture {
         let mut devices = Vec::new();
         let devices_iter = host
             .input_devices()
-            .map_err(|e| GwhsprError::Audio(format!("Failed to enumerate devices: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Audio(format!("Failed to enumerate devices: {}", e)))?;
 
         for (index, device) in devices_iter.enumerate() {
             if let Ok(name) = device.description() {
@@ -151,7 +151,7 @@ impl AudioCapture {
             params,
             chunk_size,
             1, // mono
-        ).map_err(|e| GwhsprError::Audio(format!("Failed to create resampler: {}", e)))?;
+        ).map_err(|e| WhisperTalkError::Audio(format!("Failed to create resampler: {}", e)))?;
 
         let mut output = Vec::with_capacity((input.len() as f64 * ratio) as usize);
         
@@ -174,7 +174,7 @@ impl AudioCapture {
         let host = cpal::default_host();
         let devices: Vec<_> = host
             .input_devices()
-            .map_err(|e| GwhsprError::Audio(format!("Failed to enumerate devices: {}", e)))?
+            .map_err(|e| WhisperTalkError::Audio(format!("Failed to enumerate devices: {}", e)))?
             .collect();
 
         let vendor_id = self.device_vendor_id.lock().clone();
@@ -210,7 +210,7 @@ impl AudioCapture {
         }
 
         host.default_input_device()
-            .ok_or_else(|| GwhsprError::Audio("No default input device found".to_string()))
+            .ok_or_else(|| WhisperTalkError::Audio("No default input device found".to_string()))
     }
 
     fn initialize_stream(&mut self) -> Result<()> {
@@ -224,11 +224,11 @@ impl AudioCapture {
 
         let mut supported_configs_range = device
             .supported_input_configs()
-            .map_err(|e| GwhsprError::Audio(format!("Failed to get supported configs: {}", e)))?;
+            .map_err(|e| WhisperTalkError::Audio(format!("Failed to get supported configs: {}", e)))?;
 
         let supported_config = supported_configs_range
             .next()
-            .ok_or_else(|| GwhsprError::Audio("No supported audio config found".to_string()))?;
+            .ok_or_else(|| WhisperTalkError::Audio("No supported audio config found".to_string()))?;
 
         let config: StreamConfig = supported_config.with_max_sample_rate().into();
         let input_sample_rate: u32 = config.sample_rate;
@@ -252,7 +252,7 @@ impl AudioCapture {
             SampleFormat::U64 => self.build_stream::<u64>(&device, &config, input_channels)?,
             SampleFormat::F64 => self.build_stream::<f64>(&device, &config, input_channels)?,
             _ => {
-                return Err(GwhsprError::Audio(format!(
+                return Err(WhisperTalkError::Audio(format!(
                     "Unsupported sample format: {:?}",
                     sample_format
                 )))
@@ -345,7 +345,7 @@ impl AudioCapture {
             1024,
             channels,
         )
-        .map_err(|e| GwhsprError::Audio(format!("Failed to create resampler: {}", e)))?;
+        .map_err(|e| WhisperTalkError::Audio(format!("Failed to create resampler: {}", e)))?;
 
         Ok(Some(resampler))
     }
@@ -365,7 +365,7 @@ impl AudioCapture {
             Ordering::SeqCst,
             Ordering::SeqCst,
         ).is_err() {
-            return Err(GwhsprError::Audio("Recovery already in progress".to_string()));
+            return Err(WhisperTalkError::Audio("Recovery already in progress".to_string()));
         }
 
         self.is_recovering.store(true, Ordering::Relaxed);
@@ -391,7 +391,7 @@ impl AudioCapture {
 
         for (attempt, &timeout) in timeouts.iter().enumerate() {
             if self.abort_recovery.load(Ordering::Relaxed) {
-                return Err(GwhsprError::Audio("Recovery aborted".to_string()));
+                return Err(WhisperTalkError::Audio("Recovery aborted".to_string()));
             }
 
             eprintln!(
@@ -409,7 +409,7 @@ impl AudioCapture {
             }
         }
 
-        Err(GwhsprError::Audio("Failed to recover audio stream".to_string()))
+        Err(WhisperTalkError::Audio("Failed to recover audio stream".to_string()))
     }
 
     #[allow(dead_code)]
@@ -424,7 +424,7 @@ impl AudioCapture {
 
         for attempt in 0..max_retries {
             if self.abort_recovery.load(Ordering::Relaxed) {
-                return Err(GwhsprError::Audio("Recovery aborted".to_string()));
+                return Err(WhisperTalkError::Audio("Recovery aborted".to_string()));
             }
 
             sleep(Duration::from_millis(recovery_interval_ms)).await;
@@ -437,7 +437,7 @@ impl AudioCapture {
             eprintln!("Background recovery attempt {} failed", attempt + 1);
         }
 
-        Err(GwhsprError::Audio(format!(
+        Err(WhisperTalkError::Audio(format!(
             "Background recovery failed after {} attempts",
             max_retries
         )))

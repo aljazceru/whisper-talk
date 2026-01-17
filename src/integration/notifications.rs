@@ -1,6 +1,6 @@
 use crate::error::Result;
 #[allow(unused_imports)]
-use crate::error::GwhsprError;
+use crate::error::WhisperTalkError;
 use tracing::debug;
 #[allow(unused_imports)]
 use tracing::warn;
@@ -47,7 +47,7 @@ impl NotificationManager {
         #[cfg(feature = "notifications")]
         {
             let result = notify_rust::Notification::new()
-                .appname("gwhspr")
+                .appname("whisper-talk")
                 .summary(title)
                 .body(body)
                 .urgency(urgency.into())
@@ -60,7 +60,7 @@ impl NotificationManager {
                 }
                 Err(e) => {
                     warn!("Failed to send notification: {}", e);
-                    Err(GwhsprError::System(format!("Notification failed: {}", e)))
+                    Err(WhisperTalkError::System(format!("Notification failed: {}", e)))
                 }
             }
         }
@@ -74,15 +74,15 @@ impl NotificationManager {
 
     #[allow(dead_code)]
     pub fn send_error(&self, message: &str) -> Result<()> {
-        self.send("gwhspr Error", message, Urgency::Critical)
+        self.send("whisper-talk Error", message, Urgency::Critical)
     }
 
     #[allow(dead_code)]
     pub fn send_recovery_status(&self, success: bool, reason: &str) -> Result<()> {
         if success {
-            self.send("gwhspr Recovery", reason, Urgency::Normal)
+            self.send("whisper-talk Recovery", reason, Urgency::Normal)
         } else {
-            self.send("gwhspr Recovery Failed", reason, Urgency::Critical)
+            self.send("whisper-talk Recovery Failed", reason, Urgency::Critical)
         }
     }
 

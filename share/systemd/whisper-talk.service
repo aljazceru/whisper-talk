@@ -1,11 +1,11 @@
 [Unit]
-Description=gwhspr Voice Dictation Service
+Description=whisper-talk Voice Dictation Service
 After=pipewire.service pulseaudio.service network.target
 Wants=pipewire.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/gwhspr
+ExecStart=/usr/local/bin/whisper-talk
 Restart=on-failure
 RestartSec=5
 

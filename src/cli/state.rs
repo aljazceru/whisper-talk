@@ -35,7 +35,7 @@ pub fn run_state(args: StateArgs) -> Result<()> {
 }
 
 fn run_state_show(paths: &Paths) -> Result<()> {
-    println!("gwhspr State Information\n");
+    println!("whisper-talk State Information\n");
     println!("State directory: {}", paths.state_dir.display());
     println!();
 
@@ -163,7 +163,7 @@ fn run_state_validate(paths: &Paths) -> Result<()> {
         for issue in &issues {
             println!("  ✗ {}", issue);
         }
-        println!("\nRun 'gwhspr state reset' to clear state files.");
+        println!("\nRun 'whisper-talk state reset' to clear state files.");
     }
 
     Ok(())

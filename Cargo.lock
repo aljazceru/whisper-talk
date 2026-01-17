@@ -1266,44 +1266,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gwhspr"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "cpal 0.17.1",
- "dialoguer",
- "directories",
- "dirs",
- "evdev",
- "futures-util",
- "gtk4",
- "gtk4-layer-shell",
- "indicatif",
- "libc",
- "mockall",
- "nix",
- "notify-rust",
- "once_cell",
- "parking_lot",
- "regex",
- "reqwest",
- "rodio",
- "rstest",
- "rubato",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.17",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "udev",
- "whisper-rs",
- "zbus",
-]
-
-[[package]]
 name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3498,6 +3460,44 @@ dependencies = [
  "cfg-if",
  "cmake",
  "fs_extra",
+]
+
+[[package]]
+name = "whisper-talk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "cpal 0.17.1",
+ "dialoguer",
+ "directories",
+ "dirs",
+ "evdev",
+ "futures-util",
+ "gtk4",
+ "gtk4-layer-shell",
+ "indicatif",
+ "libc",
+ "mockall",
+ "nix",
+ "notify-rust",
+ "once_cell",
+ "parking_lot",
+ "regex",
+ "reqwest",
+ "rodio",
+ "rstest",
+ "rubato",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "udev",
+ "whisper-rs",
+ "zbus",
 ]
 
 [[package]]

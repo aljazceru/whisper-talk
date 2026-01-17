@@ -1,4 +1,4 @@
-//! PulseAudio/PipeWire event monitor for gwhspr
+//! PulseAudio/PipeWire event monitor for whisper-talk
 //! Uses pactl to detect default source changes and server restarts
 
 use std::io::{BufRead, BufReader};
@@ -110,10 +110,10 @@ impl PulseMonitor {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
-            .map_err(|e| crate::error::GwhsprError::Audio(format!("Failed to start pactl subscribe: {}", e)))?;
+            .map_err(|e| crate::error::WhisperTalkError::Audio(format!("Failed to start pactl subscribe: {}", e)))?;
 
         let stdout = child.stdout.take()
-            .ok_or_else(|| crate::error::GwhsprError::Audio("Failed to get pactl stdout".to_string()))?;
+            .ok_or_else(|| crate::error::WhisperTalkError::Audio("Failed to get pactl stdout".to_string()))?;
 
         self.pactl_process = Some(child);
         self.running.store(true, Ordering::SeqCst);

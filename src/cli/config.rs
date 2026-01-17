@@ -77,7 +77,7 @@ fn run_config_init(force: bool, paths: &Paths) -> Result<()> {
     println!("  Recording mode: {:?}", config.shortcuts.recording_mode);
     println!("  Backend: {:?}", config.transcription.backend);
     println!("  Model: {}", config.transcription.model);
-    println!("\nRun 'gwhspr setup' for guided configuration.");
+    println!("\nRun 'whisper-talk setup' for guided configuration.");
 
     Ok(())
 }
@@ -85,7 +85,7 @@ fn run_config_init(force: bool, paths: &Paths) -> Result<()> {
 fn run_config_show(format: &str, paths: &Paths) -> Result<()> {
     if !paths.config_file.exists() {
         println!("No configuration file found at: {}", paths.config_file.display());
-        println!("Run 'gwhspr config init' to create one.");
+        println!("Run 'whisper-talk config init' to create one.");
         return Ok(());
     }
 
@@ -140,7 +140,7 @@ fn run_config_show(format: &str, paths: &Paths) -> Result<()> {
 fn run_config_edit(paths: &Paths) -> Result<()> {
     if !paths.config_file.exists() {
         println!("No configuration file found at: {}", paths.config_file.display());
-        println!("Run 'gwhspr config init' to create one.");
+        println!("Run 'whisper-talk config init' to create one.");
         return Ok(());
     }
 
@@ -206,7 +206,7 @@ fn run_config_get(key: &str, paths: &Paths) -> Result<()> {
 
 fn run_config_set(key: &str, value: &str, paths: &Paths) -> Result<()> {
     if !paths.config_file.exists() {
-        anyhow::bail!("No configuration file found. Run 'gwhspr config init' first.");
+        anyhow::bail!("No configuration file found. Run 'whisper-talk config init' first.");
     }
 
     let mut config_manager = ConfigManager::new(paths.clone())?;

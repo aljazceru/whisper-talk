@@ -12,7 +12,7 @@ pub struct StatusArgs {}
 pub fn run_status(_args: StatusArgs) -> Result<()> {
     let paths = Paths::new()?;
 
-    println!("gwhspr System Status\n");
+    println!("whisper-talk System Status\n");
     println!("{}", "=".repeat(50));
 
     // Daemon status
@@ -41,7 +41,7 @@ fn print_daemon_status(paths: &Paths) {
 
     // Check systemd service status
     let service_status = Command::new("systemctl")
-        .args(["--user", "is-active", "gwhspr"])
+        .args(["--user", "is-active", "whisper-talk"])
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_else(|_| "unknown".to_string());
@@ -111,7 +111,7 @@ fn print_config_status(paths: &Paths) {
         }
     } else {
         println!("  Config file: ✗ not found");
-        println!("  Run 'gwhspr setup' to create configuration");
+        println!("  Run 'whisper-talk setup' to create configuration");
     }
 }
 
@@ -139,7 +139,7 @@ fn print_model_status(paths: &Paths) {
 
     if found_models.is_empty() {
         println!("  Models: ✗ none found");
-        println!("  Run 'gwhspr model download <name>' to download a model");
+        println!("  Run 'whisper-talk model download <name>' to download a model");
     } else {
         println!("  Models: ✓ {} found", found_models.len());
         for model in &found_models {
@@ -205,7 +205,7 @@ fn print_waybar_status() {
 
     if let Some(config_path) = waybar_config {
         if let Ok(content) = fs::read_to_string(&config_path) {
-            if content.contains("custom/gwhspr") {
+            if content.contains("custom/whisper-talk") {
                 println!("  Waybar module: ✓ installed");
             } else {
                 println!("  Waybar module: ✗ not installed");

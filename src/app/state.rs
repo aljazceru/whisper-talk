@@ -4,7 +4,7 @@ use crate::config::ConfigManager;
 use crate::device::monitor::{DeviceMonitor, extract_device_properties, DeviceProperties};
 use crate::device::suspend_monitor::SuspendMonitor;
 use crate::audio::pulse_monitor::PulseMonitor;
-use crate::error::{GwhsprError, Result};
+use crate::error::{WhisperTalkError, Result};
 use crate::injection::TextInjector;
 use crate::input::GlobalShortcuts;
 use crate::instance_lock::InstanceLock;
@@ -277,7 +277,7 @@ impl Application {
             let mut wb = backend.lock();
             let b = wb.as_mut().ok_or_else(|| anyhow::anyhow!("Whisper backend not loaded"))?;
             b.transcribe(&audio_vec).map_err(|e| anyhow::anyhow!("Transcription error: {}", e))
-        }).await.map_err(|e| GwhsprError::Transcription(format!("Join error: {}", e)))??;
+        }).await.map_err(|e| WhisperTalkError::Transcription(format!("Join error: {}", e)))??;
 
         if text.is_empty() {
             println!("No transcribed text");
@@ -306,7 +306,7 @@ impl Application {
             let i = inj.as_mut().ok_or_else(|| anyhow::anyhow!("Text injector not loaded"))?;
             i.set_word_overrides(overrides);
             i.inject_text(&text).map_err(|e| anyhow::anyhow!("Injection error: {}", e))
-        }).await.map_err(|e| GwhsprError::Injection(format!("Join error: {}", e)))??;
+        }).await.map_err(|e| WhisperTalkError::Injection(format!("Join error: {}", e)))??;
 
         Ok(result)
     }
@@ -342,7 +342,7 @@ impl Application {
                 eprintln!("Audio capture recovery failed: {}", e);
                 *self.recovery_result.lock() = format!("failed: {}", e);
                 self.write_status_files();
-                Err(GwhsprError::System(format!("Recovery failed: {}", e)))
+                Err(WhisperTalkError::System(format!("Recovery failed: {}", e)))
             }
         }
     }
@@ -504,7 +504,7 @@ impl OwnedApplication {
 
         self.inner.start_monitors()?;
 
-        println!("gwhspr-rs is running. Press {} to toggle recording", shortcut_str);
+        println!("whisper-talk is running. Press {} to toggle recording", shortcut_str);
 
         self.inner.write_status_files();
 
@@ -526,7 +526,7 @@ impl OwnedApplication {
             }
         }
 
-        println!("gwhspr-rs stopped");
+        println!("whisper-talk stopped");
 
         Ok(())
     }
