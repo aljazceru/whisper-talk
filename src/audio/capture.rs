@@ -3,7 +3,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Sample, SampleFormat, StreamConfig};
 use parking_lot::Mutex;
 use rubato::{
-    Resampler, SincFixedIn, SincInterpolationParameters,
+    SincFixedIn, SincInterpolationParameters,
     SincInterpolationType, WindowFunction,
 };
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -277,7 +277,7 @@ impl AudioCapture {
         let is_recording_clone = self.is_recording.clone();
         let audio_buffer_clone = self.audio_buffer.clone();
         let audio_level_clone = self.audio_level.clone();
-        let resampler_clone = self.resampler.clone();
+        let _resampler_clone = self.resampler.clone();
         let _target_sample_rate = self.target_sample_rate;
         let target_channels = self.target_channels;
         let input_channels = input_channels as usize;
@@ -316,6 +316,7 @@ impl AudioCapture {
         Ok(Box::new(stream))
     }
 
+    #[allow(dead_code)]
     fn create_resampler(
         &self,
         input_sample_rate: u32,

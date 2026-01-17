@@ -39,7 +39,7 @@ impl NotificationManager {
     }
 
     #[allow(dead_code)]
-    pub fn send(&self, title: &str, body: &str, urgency: Urgency) -> Result<()> {
+    pub fn send(&self, title: &str, body: &str, _urgency: Urgency) -> Result<()> {
         if !self.enabled {
             return Ok(());
         }

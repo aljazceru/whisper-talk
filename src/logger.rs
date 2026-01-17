@@ -68,30 +68,37 @@ pub fn init_logging(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn is_progress_enabled() -> bool {
     PROGRESS_ENABLED.load(Ordering::SeqCst)
 }
 
+#[allow(dead_code)]
 pub fn log_info(msg: &str) {
     info!("{}", msg);
 }
 
+#[allow(dead_code)]
 pub fn log_success(msg: &str) {
     info!("{}", msg);
 }
 
+#[allow(dead_code)]
 pub fn log_warning(msg: &str) {
     warn!("{}", msg);
 }
 
+#[allow(dead_code)]
 pub fn log_error(msg: &str) {
     error!("{}", msg);
 }
 
+#[allow(dead_code)]
 pub fn log_debug(msg: &str) {
     tracing::debug!("{}", msg);
 }
 
+#[allow(dead_code)]
 pub fn set_progress_enabled(enabled: bool) {
     PROGRESS_ENABLED.store(enabled, Ordering::SeqCst);
 }
