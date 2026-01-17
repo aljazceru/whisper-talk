@@ -27,6 +27,7 @@ features = ["vorbis"]
 
 [dependencies.whisper-rs]
 version = "0.15"
+default-features = false
 
 [dependencies.reqwest]
 version = "0.12"
@@ -122,6 +123,11 @@ tempfile = "3.16"
 default = []
 mic-osd = ["gtk4", "gtk4-layer-shell"]
 notifications = ["notify-rust"]
+# GPU acceleration features
+cuda = ["whisper-rs/cuda"]
+hipblas = ["whisper-rs/hipblas"]
+vulkan = ["whisper-rs/vulkan"]
+metal = ["whisper-rs/metal"]
 
 [profile.release]
 opt-level = 3
