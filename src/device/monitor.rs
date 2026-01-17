@@ -162,7 +162,9 @@ pub fn extract_device_properties(device: &udev::Device) -> DeviceProperties {
 #[derive(Debug, Clone)]
 pub struct DeviceProperties {
     pub id_model: Option<String>,
+    #[allow(dead_code)]
     pub id_model_id: Option<String>,
+    #[allow(dead_code)]
     pub id_vendor_id: Option<String>,
     pub devname: Option<String>,
 }

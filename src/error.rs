@@ -32,6 +32,7 @@ pub enum GwhsprError {
     AlreadyRunning,
 
     #[error("Device not found: {0}")]
+    #[allow(dead_code)]
     DeviceNotFound(String),
 
     #[error("Model not found: {0}")]

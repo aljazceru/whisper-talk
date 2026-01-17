@@ -1,3 +1,3 @@
 pub mod state;
 
-pub use state::{Application, OwnedApplication};
+pub use state::Application;

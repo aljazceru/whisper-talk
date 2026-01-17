@@ -67,6 +67,7 @@ impl AudioFeedback {
         self.play_sound(&sound_path, |config| config.error_sound_volume)
     }
 
+    #[allow(dead_code)]
     pub fn set_volume(&self, volume: f64) -> Result<()> {
         let mut config = self.config.lock();
         config.master_volume = volume.clamp(0.0, 1.0);

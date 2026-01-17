@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };

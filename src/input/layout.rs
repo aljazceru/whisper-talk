@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::error::{GwhsprError, Result};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;

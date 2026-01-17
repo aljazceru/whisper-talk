@@ -39,6 +39,11 @@ impl TextInjector {
         let processed = self.apply_word_overrides(text);
         let is_kitty = self.is_kitty_terminal()?;
 
+        if let Err(e) = self.copy_to_clipboard(&processed) {
+            eprintln!("Failed to copy to clipboard: {}", e);
+        }
+        thread::sleep(Duration::from_millis(50));
+
         self.clear_modifiers()?;
         thread::sleep(Duration::from_millis(20));
 
@@ -208,5 +213,26 @@ impl TextInjector {
         }
 
         processed
+    }
+
+    fn copy_to_clipboard(&self, text: &str) -> Result<()> {
+        let mut child = Command::new("wl-copy")
+            .stdin(Stdio::piped())
+            .spawn()
+            .map_err(|e| GwhsprError::Injection(format!("Failed to spawn wl-copy: {}", e)))?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(text.as_bytes())
+                .map_err(|e| GwhsprError::Injection(format!("Failed to write to wl-copy stdin: {}", e)))?;
+        }
+
+        let status = child.wait()
+            .map_err(|e| GwhsprError::Injection(format!("Failed to wait for wl-copy: {}", e)))?;
+        
+        if !status.success() {
+             return Err(GwhsprError::Injection(format!("wl-copy failed with status: {}", status)));
+        }
+
+        Ok(())
     }
 }

@@ -74,20 +74,62 @@ impl GlobalShortcuts {
     }
 
     fn find_keyboard_device() -> Result<Option<Device>> {
-        for path in std::fs::read_dir("/dev/input")
-            .map_err(|e| GwhsprError::Input(format!("Failed to read /dev/input: {}", e)))? 
-        {
-            let entry = path.map_err(|e| GwhsprError::Input(format!("Failed to read dir entry: {}", e)))?;
+        let mut candidates: Vec<(std::path::PathBuf, String, usize, bool)> = Vec::new();
+
+        let entries: Vec<_> = std::fs::read_dir("/dev/input")
+            .map_err(|e| GwhsprError::Input(format!("Failed to read /dev/input: {}", e)))?
+            .filter_map(|e| e.ok())
+            .collect();
+
+        eprintln!("Scanning {} input devices...", entries.len());
+
+        for entry in entries {
             let entry_path = entry.path();
             let path_str = entry_path.to_string_lossy();
             if path_str.contains("event") {
-                if let Ok(dev) = Device::open(&entry_path) {
-                    if dev.supported_keys().map_or(false, |keys| keys.into_iter().count() > 100) {
-                        return Ok(Some(dev));
+                match Device::open(&entry_path) {
+                    Ok(dev) => {
+                        let key_count = dev.supported_keys().map_or(0, |keys| keys.into_iter().count());
+                        let name = dev.name().unwrap_or("Unknown").to_string();
+                        let name_lower = name.to_lowercase();
+
+                        // Skip virtual devices (ydotool, uinput, etc.)
+                        let is_virtual = name_lower.contains("ydotool")
+                            || name_lower.contains("virtual")
+                            || name_lower.contains("uinput");
+
+                        eprintln!("  {}: {} ({} keys){}",
+                            entry_path.display(), name, key_count,
+                            if is_virtual { " [virtual, skipped]" } else { "" });
+
+                        if key_count > 50 && !is_virtual {
+                            // Prefer devices with "keyboard" in the name
+                            let is_keyboard = name_lower.contains("keyboard");
+                            candidates.push((entry_path.clone(), name, key_count, is_keyboard));
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("  {}: Error opening - {}", entry_path.display(), e);
                     }
                 }
             }
         }
+
+        // Sort: keyboards first, then by key count descending
+        candidates.sort_by(|a, b| {
+            match (a.3, b.3) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => b.2.cmp(&a.2),
+            }
+        });
+
+        if let Some((path, name, key_count, _)) = candidates.first() {
+            println!("Using keyboard device: {} ({}, {} keys)", path.display(), name, key_count);
+            return Ok(Some(Device::open(path)?));
+        }
+
+        eprintln!("No suitable keyboard device found in {} candidates", candidates.len());
         Ok(None)
     }
 
@@ -199,6 +241,10 @@ impl GlobalShortcuts {
 
                                 match value {
                                     1 => {
+                                        // Debug: show key presses
+                                        if std::env::var("GWHSPR_DEBUG").is_ok() {
+                                            eprintln!("Key down: {:?}, modifiers: {:?}", key_code, modifier_states);
+                                        }
                                         if shortcut.modifiers.iter().any(|&k| k == key_code) {
                                             modifier_states.push(key_code);
                                         } else if key_code == shortcut.key {

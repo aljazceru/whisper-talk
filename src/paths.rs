@@ -6,6 +6,7 @@ pub struct Paths {
     pub config_file: PathBuf,
     pub data_dir: PathBuf,
     pub state_dir: PathBuf,
+    #[allow(dead_code)]
     pub cache_dir: PathBuf,
     pub models_dir: PathBuf,
     pub model_search_dirs: Vec<PathBuf>,

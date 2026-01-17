@@ -18,6 +18,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::time::sleep;
+use tokio::runtime::Handle;
 use anyhow;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -46,6 +47,7 @@ pub struct Application {
     last_recovery_time: Arc<AtomicU64>,
     recovery_tx: Arc<Mutex<Option<mpsc::Sender<RecoveryEvent>>>>,
     recovery_result: Arc<Mutex<String>>,
+    runtime_handle: Handle,
 }
 
 #[derive(Clone, Debug)]
@@ -67,7 +69,7 @@ impl Application {
         let config_manager = ConfigManager::new((*paths).clone())?;
         let loaded_config = config_manager.get_config().clone();
 
-        let (recovery_tx, mut recovery_rx) = mpsc::channel::<RecoveryEvent>(32);
+        let (recovery_tx, recovery_rx) = mpsc::channel::<RecoveryEvent>(32);
 
         let app = Self {
             config: Arc::new(Mutex::new(loaded_config)),
@@ -87,6 +89,7 @@ impl Application {
             last_recovery_time: Arc::new(AtomicU64::new(0)),
             recovery_tx: Arc::new(Mutex::new(Some(recovery_tx))),
             recovery_result: Arc::new(Mutex::new(String::new())),
+            runtime_handle: Handle::current(),
         };
 
         app.initialize_subsystems()?;
@@ -223,7 +226,7 @@ impl Application {
 
         let config = self.config.lock();
         let mute_detection = config.audio.mute_detection;
-        let zero_volume_threshold = config.audio.zero_volume_threshold;
+        let _zero_volume_threshold = config.audio.zero_volume_threshold;
         drop(config);
 
         if mute_detection {
@@ -249,7 +252,7 @@ impl Application {
         self.write_status_files();
 
         let app = self.clone();
-        tokio::spawn(async move {
+        self.runtime_handle.spawn(async move {
             let result = app.process_audio(&audio_data).await;
 
             *app.recording_state.lock() = RecordingState::Idle;
@@ -395,11 +398,12 @@ impl Application {
             let _ = feedback.play_error();
         }
 
+        // Use try_send to avoid requiring async context (can be called from input thread)
         let tx = self.recovery_tx.lock().clone();
         if let Some(tx) = tx {
-            tokio::spawn(async move {
-                let _ = tx.send(recovery_event).await;
-            });
+            if let Err(e) = tx.try_send(recovery_event) {
+                eprintln!("Failed to send recovery event: {}", e);
+            }
         }
     }
 
@@ -427,28 +431,9 @@ impl Application {
         }
     }
 
-    fn clone_for_callback(&self) -> Self {
-        Self {
-            config: self.config.clone(),
-            paths: self.paths.clone(),
-            audio_capture: self.audio_capture.clone(),
-            whisper_backend: self.whisper_backend.clone(),
-            global_shortcuts: self.global_shortcuts.clone(),
-            text_injector: self.text_injector.clone(),
-            audio_feedback: self.audio_feedback.clone(),
-            device_monitor: self.device_monitor.clone(),
-            suspend_monitor: self.suspend_monitor.clone(),
-            pulse_monitor: self.pulse_monitor.clone(),
-            mic_osd: self.mic_osd.clone(),
-            recording_state: self.recording_state.clone(),
-            is_running: self.is_running.clone(),
-            recovery_cooldown: self.recovery_cooldown.clone(),
-            last_recovery_time: self.last_recovery_time.clone(),
-            recovery_tx: self.recovery_tx.clone(),
-            recovery_result: self.recovery_result.clone(),
-        }
-    }
 
+
+    #[allow(dead_code)]
     pub fn get_audio_level(&self) -> f32 {
         self.audio_capture.lock()
             .as_ref()
@@ -580,7 +565,7 @@ impl Application {
                     }
                     let tx = app.recovery_tx.lock().clone();
                     if let Some(tx) = tx {
-                        tokio::spawn(async move {
+                        app.runtime_handle.spawn(async move {
                             let _ = tx.send(RecoveryEvent::HotplugDevice(props)).await;
                         });
                     }
@@ -608,7 +593,7 @@ impl Application {
             info!("System resumed, triggering recovery");
             let tx = app.recovery_tx.lock().clone();
             if let Some(tx) = tx {
-                tokio::spawn(async move {
+                app.runtime_handle.spawn(async move {
                     let _ = tx.send(RecoveryEvent::SuspendResume).await;
                 });
             }
@@ -634,7 +619,7 @@ impl Application {
                     info!("PulseAudio default source changed to: {}", new_source);
                     let tx = app.recovery_tx.lock().clone();
                     if let Some(tx) = tx {
-                        tokio::spawn(async move {
+                        app.runtime_handle.spawn(async move {
                             let _ = tx.send(RecoveryEvent::PulseAudioEvent).await;
                         });
                     }
@@ -648,7 +633,7 @@ impl Application {
                     info!("PulseAudio server restarted, triggering recovery");
                     let tx = app.recovery_tx.lock().clone();
                     if let Some(tx) = tx {
-                        tokio::spawn(async move {
+                        app.runtime_handle.spawn(async move {
                             let _ = tx.send(RecoveryEvent::PulseAudioEvent).await;
                         });
                     }

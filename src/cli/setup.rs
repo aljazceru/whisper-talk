@@ -19,53 +19,65 @@ pub struct SetupWizard;
 impl SetupWizard {
     pub fn run(&self) -> Result<()> {
         println!();
-        println!("╔═══════════════════════════════════════════════════════════════╗");
-        println!("║                    gwhspr Interactive Setup                      ║");
-        println!("║            Voice Dictation Configuration Wizard                  ║");
-        println!("╚═══════════════════════════════════════════════════════════════╝");
+        println!("╔════════════════════════════════════════════════════════════════╗");
+        println!("║                     gwhspr Setup                               ║");
+        println!("╚════════════════════════════════════════════════════════════════╝");
         println!();
 
         let paths = Paths::new()?;
+        let config = Config::default();
 
-        let backend = self.select_backend()?;
-        let model = self.select_model(backend)?;
-        let audio_config = self.select_audio_device()?;
-        let enable_systemd = self.prompt_systemd()?;
-
+        // Show defaults
+        println!("Default configuration:");
+        println!("  Shortcut:   {} (toggle recording)", config.shortcuts.primary_shortcut);
+        println!("  Model:      base (good balance of speed/accuracy)");
+        println!("  Microphone: System default");
         println!();
-        println!("--- Downloading Model ---");
+
+        let use_defaults = Confirm::new()
+            .with_prompt("Use these defaults?")
+            .default(true)
+            .interact()?;
+
+        let (model, audio_config) = if use_defaults {
+            ("base".to_string(), AudioConfig::default())
+        } else {
+            let model = self.select_model(TranscriptionBackend::Whisper)?;
+            let audio = self.select_audio_device()?;
+            (model, audio)
+        };
+
+        // Download/verify model
+        println!();
+        println!("Checking model...");
         self.download_model(&model, &paths)?;
 
-        println!();
-        self.show_permission_commands();
+        // Systemd service
+        let enable_systemd = self.prompt_systemd()?;
 
         if enable_systemd {
             println!();
-            println!("--- Installing Systemd Service ---");
             self.install_systemd_service(&paths)?;
         }
 
-        let mut config = Config::default();
-        config.transcription.backend = backend;
-        config.transcription.model = model;
-        config.audio = audio_config;
+        // Save config
+        let mut final_config = config;
+        final_config.transcription.model = model;
+        final_config.audio = audio_config;
+
+        self.save_config(final_config, &paths)?;
 
         println!();
-        self.save_config(config, &paths)?;
-
+        println!("Setup complete!");
         println!();
-        println!("╔═══════════════════════════════════════════════════════════════╗");
-        println!("║                    Setup Complete!                            ║");
-        println!("╚═══════════════════════════════════════════════════════════════╝");
-        println!();
-        println!("You can now start gwhspr with: gwhspr run");
-        println!();
-        println!("For help: gwhspr --help");
+        println!("Start with:  gwhspr daemon");
+        println!("Or enable:   systemctl --user enable --now gwhspr");
         println!();
 
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn select_backend(&self) -> Result<TranscriptionBackend> {
         println!("Select Transcription Backend:");
         println!("  Whisper:   Local transcription, works on CPU or GPU (CUDA/ROCm)");
@@ -131,39 +143,40 @@ impl SetupWizard {
 
     fn select_audio_device(&self) -> Result<AudioConfig> {
         println!();
-        println!("--- Audio Device Configuration ---");
+        println!("--- Audio Device ---");
+        println!("By default, gwhspr uses your system's default microphone.");
 
+        let use_default = Confirm::new()
+            .with_prompt("Use system default microphone?")
+            .default(true)
+            .interact()?;
+
+        if use_default {
+            return Ok(AudioConfig::default());
+        }
+
+        // User wants to select a specific device
         let capture = AudioCapture::new(&AudioConfig::default())?;
         let devices = capture.enumerate_devices()?;
 
         if devices.is_empty() {
-            println!("No audio input devices detected.");
-            println!("Please connect a microphone and try again.");
-            return Err(anyhow::anyhow!("No audio devices found"));
+            println!("No audio input devices detected. Using system default.");
+            return Ok(AudioConfig::default());
         }
 
-        println!("\nAvailable Audio Input Devices:");
         let device_items: Vec<String> = devices
             .iter()
             .map(|d| {
                 format!(
-                    "{} ({}, {} Hz, {} channels)",
+                    "{} ({} Hz)",
                     d.name,
-                    d.id.map_or("default".to_string(), |i| i.to_string()),
-                    d.default_sample_rate,
-                    d.max_channels
+                    d.default_sample_rate
                 )
             })
             .collect();
 
-        for (i, item) in device_items.iter().enumerate() {
-            println!("  {}. {}", i + 1, item);
-        }
-
-        println!();
-
         let selection = Select::new()
-            .with_prompt("Select your audio input device:")
+            .with_prompt("Select audio input device")
             .items(&device_items)
             .default(0)
             .interact()?;
@@ -182,18 +195,14 @@ impl SetupWizard {
 
     fn prompt_systemd(&self) -> Result<bool> {
         println!();
-        println!("--- Systemd Service ---");
-        println!("Installing a systemd service will allow gwhspr to run automatically");
-        println!("when you log in. This is recommended for daily use.");
-        println!();
-
         Confirm::new()
-            .with_prompt("Would you like to install and enable the systemd service?")
+            .with_prompt("Install systemd service (auto-start on login)?")
             .default(true)
             .interact()
             .map_err(Into::into)
     }
 
+    #[allow(dead_code)]
     fn show_permission_commands(&self) -> Result<()> {
         println!("╔═══════════════════════════════════════════════════════════════╗");
         println!("║              System Permissions Setup Commands                 ║");
@@ -226,7 +235,10 @@ impl SetupWizard {
         println!("Model will be saved to: {}", paths.models_dir.display());
         println!();
 
-        let mut backend = WhisperBackend::new(&Default::default());
+        let mut config = crate::types::TranscriptionConfig::default();
+        config.model = model.to_string();
+
+        let mut backend = WhisperBackend::new(&config);
         backend.initialize(paths)?;
 
         println!("Model '{}' is ready for use.", model);
@@ -244,7 +256,7 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/gwhspr run
+ExecStart=/usr/bin/gwhspr daemon
 Restart=on-failure
 RestartSec=5
 

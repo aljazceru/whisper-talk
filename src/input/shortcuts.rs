@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub use evdev::KeyCode;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,6 +148,10 @@ pub fn parse_key(key_str: &str) -> Result<Key, ShortcutParseError> {
         
         if c.is_ascii_lowercase() {
             return Ok(Key::Char(c));
+        }
+
+        if c.is_ascii_uppercase() {
+            return Ok(Key::Char(c.to_ascii_lowercase()));
         }
         
         if c.is_ascii_digit() {

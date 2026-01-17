@@ -84,7 +84,7 @@ impl WhisperBackend {
         let mut state = context.create_state()
             .map_err(|e| GwhsprError::Transcription(format!("Failed to create state: {}", e)))?;
 
-        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 5 });
 
         params.set_n_threads(self.config.threads as i32);
         params.set_offset_ms(0);
@@ -273,14 +273,17 @@ impl WhisperBackend {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn get_model_name(&self) -> &str {
         &self.model_name
     }
 
+    #[allow(dead_code)]
     pub fn is_loaded(&self) -> bool {
         self.context.is_some()
     }
 
+    #[allow(dead_code)]
     pub fn is_gpu_enabled(&self) -> bool {
         self.use_gpu
     }

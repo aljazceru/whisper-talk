@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::error::Result;
 use serde_json::{json, Value as JsonValue};
 use std::fs;

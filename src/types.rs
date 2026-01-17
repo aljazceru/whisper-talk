@@ -42,7 +42,7 @@ impl Default for TranscriptionBackend {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct ShortcutConfig {
     #[serde(default = "default_primary_shortcut")]
     pub primary_shortcut: String,
@@ -55,6 +55,17 @@ pub struct ShortcutConfig {
 
     #[serde(default = "default_auto_mode_threshold_ms")]
     pub auto_mode_threshold_ms: u64,
+}
+
+impl Default for ShortcutConfig {
+    fn default() -> Self {
+        Self {
+            primary_shortcut: default_primary_shortcut(),
+            recording_mode: RecordingMode::default(),
+            grab_keys: false,
+            auto_mode_threshold_ms: default_auto_mode_threshold_ms(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default)]
@@ -78,7 +89,7 @@ pub struct AudioConfig {
     pub zero_volume_threshold: f32,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct TranscriptionConfig {
     #[serde(default)]
     pub backend: TranscriptionBackend,
@@ -99,6 +110,20 @@ pub struct TranscriptionConfig {
 
     #[serde(default = "default_hallucination_markers")]
     pub hallucination_markers: Vec<String>,
+}
+
+impl Default for TranscriptionConfig {
+    fn default() -> Self {
+        Self {
+            backend: TranscriptionBackend::default(),
+            model: default_model(),
+            threads: default_threads(),
+            language: None,
+            word_overrides: HashMap::new(),
+            whisper_prompt: default_whisper_prompt(),
+            hallucination_markers: default_hallucination_markers(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default)]
@@ -172,7 +197,7 @@ impl Default for Config {
 }
 
 fn default_primary_shortcut() -> String {
-    "SUPER+ALT+D".to_string()
+    "SUPER+ALT+d".to_string()
 }
 
 fn default_auto_mode_threshold_ms() -> u64 {
@@ -188,7 +213,7 @@ fn default_zero_volume_threshold() -> f32 {
 }
 
 fn default_model() -> String {
-    "base".to_string()
+    "medium".to_string()
 }
 
 fn default_threads() -> usize {

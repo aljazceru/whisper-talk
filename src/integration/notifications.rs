@@ -1,7 +1,12 @@
-use crate::error::{GwhsprError, Result};
-use tracing::{debug, warn};
+use crate::error::Result;
+#[allow(unused_imports)]
+use crate::error::GwhsprError;
+use tracing::debug;
+#[allow(unused_imports)]
+use tracing::warn;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
 pub enum Urgency {
     Low,
     Normal,
@@ -22,15 +27,18 @@ impl From<Urgency> for Uurgency {
     }
 }
 
+#[allow(dead_code)]
 pub struct NotificationManager {
     enabled: bool,
 }
 
 impl NotificationManager {
+    #[allow(dead_code)]
     pub fn new(enabled: bool) -> Self {
         Self { enabled }
     }
 
+    #[allow(dead_code)]
     pub fn send(&self, title: &str, body: &str, urgency: Urgency) -> Result<()> {
         if !self.enabled {
             return Ok(());
@@ -64,10 +72,12 @@ impl NotificationManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn send_error(&self, message: &str) -> Result<()> {
         self.send("gwhspr Error", message, Urgency::Critical)
     }
 
+    #[allow(dead_code)]
     pub fn send_recovery_status(&self, success: bool, reason: &str) -> Result<()> {
         if success {
             self.send("gwhspr Recovery", reason, Urgency::Normal)
@@ -76,6 +86,7 @@ impl NotificationManager {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
@@ -87,6 +98,7 @@ impl Default for NotificationManager {
     }
 }
 
+#[allow(dead_code)]
 pub type Notifications = NotificationManager;
 
 #[cfg(test)]

@@ -31,6 +31,7 @@ pub struct AudioCapture {
     device_name: Arc<Mutex<Option<String>>>,
     device_vendor_id: Arc<Mutex<Option<String>>>,
     device_model_id: Arc<Mutex<Option<String>>>,
+    #[allow(dead_code)]
     sample_rate: u32,
     target_sample_rate: u32,
     target_channels: u16,
@@ -44,7 +45,7 @@ pub struct AudioCapture {
 
 impl AudioCapture {
     pub fn new(config: &crate::types::AudioConfig) -> Result<Self> {
-        let host = cpal::default_host();
+        let _host = cpal::default_host();
 
         Ok(Self {
             is_recording: Arc::new(AtomicBool::new(false)),
@@ -118,8 +119,55 @@ impl AudioCapture {
 
         self.terminate_stream();
 
-        let audio_data = std::mem::take(&mut *self.audio_buffer.lock());
+        let mut audio_data = std::mem::take(&mut *self.audio_buffer.lock());
+
+        // Resample if necessary
+        if self.sample_rate != self.target_sample_rate {
+            println!("Resampling from {}Hz to {}Hz", self.sample_rate, self.target_sample_rate);
+            audio_data = self.resample_audio(&audio_data)?;
+        }
+
         Ok(audio_data)
+    }
+
+    fn resample_audio(&self, input: &[f32]) -> Result<Vec<f32>> {
+        use rubato::Resampler;
+        
+        // Calculate ratio
+        let ratio = self.target_sample_rate as f64 / self.sample_rate as f64;
+        
+        let params = SincInterpolationParameters {
+            sinc_len: 256,
+            f_cutoff: 0.95,
+            interpolation: SincInterpolationType::Cubic,
+            oversampling_factor: 256,
+            window: WindowFunction::BlackmanHarris2,
+        };
+
+        let chunk_size = 1024;
+        let mut resampler = SincFixedIn::<f32>::new(
+            ratio,
+            2.0,
+            params,
+            chunk_size,
+            1, // mono
+        ).map_err(|e| GwhsprError::Audio(format!("Failed to create resampler: {}", e)))?;
+
+        let mut output = Vec::with_capacity((input.len() as f64 * ratio) as usize);
+        
+        // Process in chunks
+        for chunk in input.chunks(chunk_size) {
+            if chunk.len() == chunk_size {
+                let waves_in = vec![chunk];
+                if let Ok(resampled) = resampler.process(&waves_in, None) {
+                     if let Some(channel) = resampled.first() {
+                         output.extend_from_slice(channel);
+                     }
+                }
+            }
+        }
+        
+        Ok(output)
     }
 
     fn find_device(&self) -> Result<cpal::Device> {
@@ -187,17 +235,22 @@ impl AudioCapture {
         let input_channels = config.channels;
         let sample_format = supported_config.sample_format();
 
-        let resampler = if input_sample_rate != self.target_sample_rate || input_channels != self.target_channels {
-            self.create_resampler(input_sample_rate, input_channels)?
-        } else {
-            None
-        };
-        *self.resampler.lock() = resampler;
+        self.sample_rate = input_sample_rate; // Store actual sample rate
+
+        // No resampler in callback - we do it in stop_recording
+        *self.resampler.lock() = None;
 
         let stream = match sample_format {
             SampleFormat::F32 => self.build_stream::<f32>(&device, &config, input_channels)?,
             SampleFormat::I16 => self.build_stream::<i16>(&device, &config, input_channels)?,
             SampleFormat::U16 => self.build_stream::<u16>(&device, &config, input_channels)?,
+            SampleFormat::I8 => self.build_stream::<i8>(&device, &config, input_channels)?,
+            SampleFormat::U8 => self.build_stream::<u8>(&device, &config, input_channels)?,
+            SampleFormat::I32 => self.build_stream::<i32>(&device, &config, input_channels)?,
+            SampleFormat::I64 => self.build_stream::<i64>(&device, &config, input_channels)?,
+            SampleFormat::U32 => self.build_stream::<u32>(&device, &config, input_channels)?,
+            SampleFormat::U64 => self.build_stream::<u64>(&device, &config, input_channels)?,
+            SampleFormat::F64 => self.build_stream::<f64>(&device, &config, input_channels)?,
             _ => {
                 return Err(GwhsprError::Audio(format!(
                     "Unsupported sample format: {:?}",
@@ -225,11 +278,11 @@ impl AudioCapture {
         let audio_buffer_clone = self.audio_buffer.clone();
         let audio_level_clone = self.audio_level.clone();
         let resampler_clone = self.resampler.clone();
-        let target_sample_rate = self.target_sample_rate;
+        let _target_sample_rate = self.target_sample_rate;
         let target_channels = self.target_channels;
         let input_channels = input_channels as usize;
         let target_channels = target_channels as usize;
-        let zero_volume_threshold = self.zero_volume_threshold;
+        let _zero_volume_threshold = self.zero_volume_threshold;
 
         let stream = device.build_input_stream(
             &config_clone,
@@ -247,11 +300,8 @@ impl AudioCapture {
                     samples = stereo_to_mono(&samples, input_channels);
                 }
 
-                if let Some(resampler) = resampler_clone.lock().as_mut() {
-                    if let Ok(resampled) = resampler.process(&[&samples], None) {
-                        samples = resampled.into_iter().flatten().collect();
-                    }
-                }
+                // Removed realtime resampling
+                // if let Some(resampler) = resampler_clone.lock().as_mut() { ... }
 
                 audio_buffer_clone.lock().extend_from_slice(&samples);
             },
@@ -278,7 +328,7 @@ impl AudioCapture {
         let params = SincInterpolationParameters {
             sinc_len: 256,
             f_cutoff: 0.95,
-            interpolation: SincInterpolationType::Nearest,
+            interpolation: SincInterpolationType::Cubic,
             oversampling_factor: 256,
             window: WindowFunction::BlackmanHarris2,
         };
@@ -336,7 +386,7 @@ impl AudioCapture {
 
         self.terminate_stream();
 
-        let mut timeouts = [10, 50, 100, 500, 1000, 2000];
+        let timeouts = [10, 50, 100, 500, 1000, 2000];
 
         for (attempt, &timeout) in timeouts.iter().enumerate() {
             if self.abort_recovery.load(Ordering::Relaxed) {
@@ -361,6 +411,7 @@ impl AudioCapture {
         Err(GwhsprError::Audio("Failed to recover audio stream".to_string()))
     }
 
+    #[allow(dead_code)]
     pub async fn background_recover_stream(&mut self) -> Result<()> {
         let was_recording = self.is_recording.load(Ordering::Relaxed);
         if !was_recording {
@@ -391,10 +442,12 @@ impl AudioCapture {
         )))
     }
 
+    #[allow(dead_code)]
     pub fn abort_recovery(&self) {
         self.abort_recovery.store(true, Ordering::Relaxed);
     }
 
+    #[allow(dead_code)]
     pub fn is_recovering(&self) -> bool {
         self.is_recovering.load(Ordering::Relaxed)
     }
@@ -415,8 +468,11 @@ fn calculate_rms(audio: &[f32]) -> f32 {
 fn stereo_to_mono(stereo: &[f32], channels: usize) -> Vec<f32> {
     let mut mono = Vec::with_capacity(stereo.len() / channels);
     for chunk in stereo.chunks(channels) {
-        let sample: f32 = chunk.iter().sum::<f32>() / channels as f32;
-        mono.push(sample);
+        // Use the first channel (usually left/mono) instead of averaging
+        // This matches the Python implementation and avoids mixing in noise from empty channels
+        if let Some(&sample) = chunk.first() {
+            mono.push(sample);
+        }
     }
     mono
 }
@@ -426,6 +482,7 @@ pub struct DeviceInfo {
     pub name: String,
     pub id: Option<u32>,
     pub default_sample_rate: u32,
+    #[allow(dead_code)]
     pub max_channels: u16,
 }
 
