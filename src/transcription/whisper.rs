@@ -78,6 +78,28 @@ impl WhisperBackend {
     }
 
     pub fn transcribe(&self, audio_data: &[f32]) -> Result<String> {
+        self.transcribe_internal(audio_data, None)
+    }
+
+    /// Transcribe audio for streaming mode.
+    /// Returns (full_transcription, new_text_to_output).
+    /// The new_text_to_output is the delta from previous_text.
+    pub fn transcribe_streaming(
+        &self,
+        audio_data: &[f32],
+        previous_text: &str,
+    ) -> Result<(String, String)> {
+        // Do NOT pass previous_text as context_hint to transcribe_internal.
+        // Doing so with the full audio history causes feedback loops and hallucinations.
+        let full_text = self.transcribe_internal(audio_data, None)?;
+
+        // Find the new text that should be output
+        let new_text = self.extract_new_text(previous_text, &full_text);
+
+        Ok((full_text, new_text))
+    }
+
+    fn transcribe_internal(&self, audio_data: &[f32], context_hint: Option<&str>) -> Result<String> {
         let context = self.context.as_ref()
             .ok_or_else(|| WhisperTalkError::Transcription("Model not loaded".to_string()))?;
 
@@ -98,10 +120,20 @@ impl WhisperBackend {
         if let Some(ref lang) = self.config.language {
             params.set_language(Some(lang.as_str()));
         } else {
-            params.set_language(None);
+            // Default to English if no language is specified to avoid hallucinations on short chunks
+            params.set_language(Some("en"));
         }
 
-        if !self.config.whisper_prompt.is_empty() {
+        // Use context hint for better streaming continuity, or fall back to config prompt
+        if let Some(hint) = context_hint {
+            if !hint.is_empty() {
+                // Use the previous transcription as context for better continuity
+                let prompt = format!("{} {}", self.config.whisper_prompt, hint);
+                params.set_initial_prompt(&prompt);
+            } else if !self.config.whisper_prompt.is_empty() {
+                params.set_initial_prompt(&self.config.whisper_prompt);
+            }
+        } else if !self.config.whisper_prompt.is_empty() {
             params.set_initial_prompt(&self.config.whisper_prompt);
         }
 
@@ -123,6 +155,65 @@ impl WhisperBackend {
         self.filter_hallucinations(&mut transcription);
 
         Ok(transcription.trim().to_string())
+    }
+
+    /// Extract the new text that should be typed, given previous and current transcription.
+    /// This handles the case where Whisper might slightly revise earlier text.
+    /// Extract the new text that should be typed, given previous and current transcription.
+    /// This handles the case where Whisper might slightly revise earlier text.
+    fn extract_new_text(&self, previous: &str, current: &str) -> String {
+        if previous.is_empty() {
+            return current.to_string();
+        }
+
+        if current.is_empty() {
+            return String::new();
+        }
+
+        // Normalize for robust comparison (ignore case and punctuation)
+        fn normalize_word(s: &str) -> String {
+            s.chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect::<String>()
+                .to_lowercase()
+        }
+
+        // Helper to count visible characters (to find byte offset later)
+        // We will just split by whitespace and reconstruct for now, 
+        // effectively returning the words from current that are new.
+        
+        let prev_words: Vec<&str> = previous.split_whitespace().collect();
+        let curr_words: Vec<&str> = current.split_whitespace().collect();
+
+        // Find longest common prefix based on NORMALIZED words
+        let mut common_count = 0;
+        for (pw, cw) in prev_words.iter().zip(curr_words.iter()) {
+            if normalize_word(pw) == normalize_word(cw) {
+                common_count += 1;
+            } else {
+                break;
+            }
+        }
+
+        // Return words after the common prefix
+        if common_count < curr_words.len() {
+            // Reconstruct the new text preserving original spacing/punctuation of the new words
+            // This isn't perfect (loses spacing between the split point), but good enough for streaming
+            // A better way is to find the byte offset of the Nth word.
+            
+            // Let's find the byte offset of the start of the (common_count)-th word in current
+            // actually we want the (common_count)-th word to be SKIPPED.
+            // so we want the (common_count + 1)-th word.
+            
+            // curr_words = ["Hello", "world.", "How", "are"]
+            // common = 2 ("Hello", "world.")
+            // we want "How are".
+            // curr_words[2..].join(" ")
+            
+             curr_words[common_count..].join(" ")
+        } else {
+            String::new()
+        }
     }
 
     fn filter_hallucinations(&self, text: &mut String) {

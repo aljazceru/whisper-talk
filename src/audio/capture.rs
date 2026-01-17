@@ -456,6 +456,42 @@ impl AudioCapture {
     pub fn detect_zero_volume(&self, audio: &[f32]) -> bool {
         audio.iter().all(|&sample| sample.abs() < self.zero_volume_threshold)
     }
+
+    /// Get the current length of the audio buffer (in samples)
+    #[allow(dead_code)]
+    pub fn get_buffer_len(&self) -> usize {
+        self.audio_buffer.lock().len()
+    }
+
+    /// Get audio samples from the buffer starting at `from_sample` index.
+    /// Returns (resampled_audio, new_end_position).
+    /// Use the new_end_position as `from_sample` in the next call.
+    pub fn get_audio_chunk(&self, from_sample: usize) -> Result<(Vec<f32>, usize)> {
+        let buffer = self.audio_buffer.lock();
+        let buffer_len = buffer.len();
+
+        if from_sample >= buffer_len {
+            return Ok((Vec::new(), buffer_len));
+        }
+
+        let chunk: Vec<f32> = buffer[from_sample..].to_vec();
+        drop(buffer);
+
+        // Resample if necessary
+        let resampled = if self.sample_rate != self.target_sample_rate {
+            self.resample_audio(&chunk)?
+        } else {
+            chunk
+        };
+
+        Ok((resampled, buffer_len))
+    }
+
+    /// Get the current sample rate being used by the audio device
+    #[allow(dead_code)]
+    pub fn get_sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
 }
 
 fn calculate_rms(audio: &[f32]) -> f32 {

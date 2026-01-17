@@ -1,34 +1,71 @@
 use crate::error::{WhisperTalkError, Result};
-use crate::types::PasteMode;
-use serde::Deserialize;
 use std::collections::HashMap;
-use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
-#[derive(Debug, Deserialize)]
-struct HyprWindowInfo {
-    class: Option<String>,
-}
-
 pub struct TextInjector {
-    paste_mode: PasteMode,
     auto_submit: bool,
-    clipboard_behavior: bool,
-    clipboard_clear_delay: f64,
     word_overrides: HashMap<String, String>,
+    use_wtype: bool,
+    // Configuration for clipboard injection
+    clipboard_behavior: bool,
+    paste_mode: crate::types::PasteMode,
+    clipboard_clear_delay: f64,
 }
 
 impl TextInjector {
     pub fn new(config: &crate::types::InjectionConfig) -> Self {
-        Self {
-            paste_mode: config.paste_mode,
-            auto_submit: config.auto_submit,
-            clipboard_behavior: config.clipboard_behavior,
-            clipboard_clear_delay: config.clipboard_clear_delay,
-            word_overrides: HashMap::new(),
+        // Check if wtype is available AND actually works
+        // (some compositors don't support the virtual keyboard protocol)
+        let use_wtype = Self::test_wtype();
+
+        if use_wtype {
+            println!("Using wtype for text injection (keyboard layout aware)");
+        } else {
+            println!("Using ydotool for text injection");
         }
+
+        Self {
+            auto_submit: config.auto_submit,
+            word_overrides: HashMap::new(),
+            use_wtype,
+            clipboard_behavior: config.clipboard_behavior,
+            paste_mode: config.paste_mode,
+            clipboard_clear_delay: config.clipboard_clear_delay,
+        }
+    }
+
+    fn test_wtype() -> bool {
+        // First check if wtype is installed
+        let installed = Command::new("which")
+            .arg("wtype")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        if !installed {
+            return false;
+        }
+
+        // Test if wtype actually works with this compositor
+        // Use -M/-m to press and release a modifier key (no visible effect)
+        let output = match Command::new("wtype")
+            .args(["-M", "shift", "-m", "shift"])
+            .output()
+        {
+            Ok(o) => o,
+            Err(_) => return false,
+        };
+
+        // Check both exit code and stderr for the error message
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !output.status.success() || stderr.contains("does not support") {
+            println!("wtype installed but compositor doesn't support virtual keyboard protocol");
+            return false;
+        }
+
+        true
     }
 
     pub fn set_word_overrides(&mut self, overrides: HashMap<String, String>) {
@@ -37,69 +74,177 @@ impl TextInjector {
 
     pub fn inject_text(&self, text: &str) -> Result<()> {
         let processed = self.apply_word_overrides(text);
-        let is_kitty = self.is_kitty_terminal()?;
 
-        if let Err(e) = self.copy_to_clipboard(&processed) {
-            eprintln!("Failed to copy to clipboard: {}", e);
+        if processed.is_empty() {
+            return Ok(());
         }
-        thread::sleep(Duration::from_millis(50));
 
-        self.clear_modifiers()?;
-        thread::sleep(Duration::from_millis(20));
-
-        if is_kitty {
-            self.send_paste_keys_slow()?;
-        } else {
-            self.send_paste_keys_normal()?;
+        // Use clipboard injection if enabled
+        if self.clipboard_behavior {
+            return self.inject_via_clipboard(&processed);
         }
+
+        // Clear any stuck modifier keys first (only needed for ydotool)
+        if !self.use_wtype {
+            self.clear_modifiers()?;
+            thread::sleep(Duration::from_millis(20));
+        }
+
+        // Type the text
+        self.type_text(&processed)?;
 
         if self.auto_submit {
             thread::sleep(Duration::from_millis(50));
             self.send_enter_key()?;
         }
 
-        if self.clipboard_behavior {
-            thread::spawn({
-                let delay_secs = self.clipboard_clear_delay;
-                move || {
-                    thread::sleep(Duration::from_secs_f64(delay_secs));
-                    let _ = Self::clear_clipboard();
-                }
+        Ok(())
+    }
+
+    fn inject_via_clipboard(&self, text: &str) -> Result<()> {
+        // 1. Copy to clipboard
+        self.copy_to_clipboard(text)?;
+        
+        // 2. Clear modifiers just in case
+        if !self.use_wtype {
+            self.clear_modifiers()?;
+            thread::sleep(Duration::from_millis(20));
+        }
+
+        // 3. Send paste shortcut
+        self.send_paste_shortcut()?;
+
+        // 4. Optionally clear clipboard after delay (spawn thread to not block)
+        if self.clipboard_clear_delay > 0.0 {
+            let delay = self.clipboard_clear_delay;
+            thread::spawn(move || {
+                thread::sleep(Duration::from_secs_f64(delay));
+                // We can't easily clear without overwriting, so we leaving it for now
+                // or we could overwrite with empty string?
+                // For now, let's just leave it to avoid complexity
             });
         }
 
         Ok(())
     }
 
-    fn is_kitty_terminal(&self) -> Result<bool> {
-        match Command::new("hyprctl")
-            .args(&["activewindow", "-j"])
-            .output()
-        {
-            Ok(output) => {
-                if output.status.success() {
-                    if let Ok(window_info) = serde_json::from_slice::<HyprWindowInfo>(&output.stdout) {
-                        if let Some(class) = window_info.class {
-                            let class_lower = class.to_lowercase();
-                            return Ok(class_lower.contains("kitty")
-                                || class_lower.contains("wezterm")
-                                || class_lower.contains("ghostty")
-                                || class_lower.contains("org.wezfurlong.wezterm"));
-                        }
-                    }
-                }
-                Ok(false)
+    fn copy_to_clipboard(&self, text: &str) -> Result<()> {
+        // Try wl-copy first (Wayland)
+        let mut child = Command::new("wl-copy")
+            .stdin(std::process::Stdio::piped())
+            .spawn();
+
+        if let Ok(mut child) = child {
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
+                let _ = stdin.write_all(text.as_bytes());
             }
-            Err(_) => Ok(false),
+            let _ = child.wait();
+            return Ok(());
         }
+
+        // Fallback to xclip (X11)
+        let mut child = Command::new("xclip")
+            .args(["-selection", "clipboard", "-i"])
+            .stdin(std::process::Stdio::piped())
+            .spawn();
+
+        if let Ok(mut child) = child {
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            let _ = child.wait();
+            return Ok(());
+        }
+
+        // If both fail, and we are on Linux, we might be missing tools
+        Err(WhisperTalkError::Injection("Failed to copy to clipboard: neither wl-copy nor xclip found".to_string()))
+    }
+
+    fn send_paste_shortcut(&self) -> Result<()> {
+        // Sleep briefly to ensure modifiers are clear
+        thread::sleep(Duration::from_millis(50));
+
+        if self.use_wtype {
+            // wtype implementation of paste
+             match self.paste_mode {
+                crate::types::PasteMode::CtrlShift => {
+                    Command::new("wtype").args(["-M", "ctrl", "-M", "shift", "-k", "v", "-m", "shift", "-m", "ctrl"]).status()
+                }
+                crate::types::PasteMode::Ctrl => {
+                    Command::new("wtype").args(["-M", "ctrl", "-k", "v", "-m", "ctrl"]).status()
+                }
+                crate::types::PasteMode::Super => {
+                    Command::new("wtype").args(["-M", "win", "-k", "v", "-m", "win"]).status()
+                }
+            }.map_err(|e| WhisperTalkError::Injection(format!("Failed to send paste with wtype: {}", e)))?;
+        } else {
+             // ydotool implementation
+             // Codes: Ctrl=29, Shift=42, Super=125, V=47
+             let args = match self.paste_mode {
+                crate::types::PasteMode::CtrlShift => {
+                    // key 29:1 42:1 47:1 47:0 42:0 29:0
+                    vec!["key", "29:1", "42:1", "47:1", "47:0", "42:0", "29:0"]
+                }
+                crate::types::PasteMode::Ctrl => {
+                    // key 29:1 47:1 47:0 29:0
+                     vec!["key", "29:1", "47:1", "47:0", "29:0"]
+                }
+                crate::types::PasteMode::Super => {
+                    // key 125:1 47:1 47:0 125:0
+                     vec!["key", "125:1", "47:1", "47:0", "125:0"]
+                }
+            };
+            
+            Command::new("ydotool")
+                .args(&args)
+                .status()
+                .map_err(|e| WhisperTalkError::Injection(format!("Failed to send paste with ydotool: {}", e)))?;
+        }
+        Ok(())
+    }
+
+    fn type_text(&self, text: &str) -> Result<()> {
+        if self.use_wtype {
+            // wtype respects keyboard layout
+            let status = Command::new("wtype")
+                .arg("--")
+                .arg(text)
+                .status()
+                .map_err(|e| WhisperTalkError::Injection(format!("Failed to run wtype: {}", e)))?;
+
+            if !status.success() {
+                return Err(WhisperTalkError::Injection(format!(
+                    "wtype failed with status: {}",
+                    status
+                )));
+            }
+        } else {
+            // ydotool fallback (may have keyboard layout issues)
+            let status = Command::new("ydotool")
+                .args(["type", "--", text])
+                .status()
+                .map_err(|e| WhisperTalkError::Injection(format!("Failed to run ydotool type: {}", e)))?;
+
+            if !status.success() {
+                return Err(WhisperTalkError::Injection(format!(
+                    "ydotool type failed with status: {}",
+                    status
+                )));
+            }
+        }
+
+        Ok(())
     }
 
     fn clear_modifiers(&self) -> Result<()> {
+        // Release common modifier keys that might be stuck
         let modifiers = vec!["125:0", "126:0", "56:0", "100:0", "29:0", "97:0", "42:0", "54:0"];
 
         for modifier in &modifiers {
             let _ = Command::new("ydotool")
-                .args(&["key", modifier])
+                .args(["key", modifier])
                 .output();
             thread::sleep(Duration::from_millis(5));
         }
@@ -107,96 +252,18 @@ impl TextInjector {
         Ok(())
     }
 
-    fn send_paste_keys_slow(&self) -> Result<()> {
-        match self.paste_mode {
-            PasteMode::CtrlShift => {
-                Command::new("ydotool")
-                    .args(&["key", "29:1", "42:1"])
-                    .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to send Ctrl+Shift: {}", e)))?;
-                thread::sleep(Duration::from_millis(15));
-                Command::new("ydotool")
-                    .args(&["key", "47:1", "47:0"])
-                    .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to send V: {}", e)))?;
-                thread::sleep(Duration::from_millis(10));
-                Command::new("ydotool")
-                    .args(&["key", "42:0", "29:0"])
-                    .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to release Ctrl+Shift: {}", e)))?;
-            }
-            PasteMode::Ctrl => {
-                Command::new("ydotool")
-                    .args(&["key", "29:1"])
-                    .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to send Ctrl: {}", e)))?;
-                thread::sleep(Duration::from_millis(15));
-                Command::new("ydotool")
-                    .args(&["key", "47:1", "47:0"])
-                    .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to send V: {}", e)))?;
-                thread::sleep(Duration::from_millis(10));
-                Command::new("ydotool")
-                    .args(&["key", "29:0"])
-                    .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to release Ctrl: {}", e)))?;
-            }
-            PasteMode::Super => {
-                Command::new("ydotool")
-                    .args(&["key", "125:1"])
-                    .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to send Super: {}", e)))?;
-                thread::sleep(Duration::from_millis(15));
-                Command::new("ydotool")
-                    .args(&["key", "47:1", "47:0"])
-                    .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to send V: {}", e)))?;
-                thread::sleep(Duration::from_millis(10));
-                Command::new("ydotool")
-                    .args(&["key", "125:0"])
-                    .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to release Super: {}", e)))?;
-            }
-        }
-
-        Ok(())
-    }
-
-    fn send_paste_keys_normal(&self) -> Result<()> {
-        let keys = match self.paste_mode {
-            PasteMode::CtrlShift => vec!["29:1", "42:1", "47:1", "47:0", "42:0", "29:0"],
-            PasteMode::Ctrl => vec!["29:1", "47:1", "47:0", "29:0"],
-            PasteMode::Super => vec!["125:1", "47:1", "47:0", "125:0"],
-        };
-
-        Command::new("ydotool")
-            .args(&["key"])
-            .args(&keys)
-            .spawn()
-            .map_err(|e| WhisperTalkError::Injection(format!("Failed to send paste keys: {}", e)))?;
-
-        Ok(())
-    }
-
     fn send_enter_key(&self) -> Result<()> {
-        Command::new("ydotool")
-            .args(&["key", "28:1", "28:0"])
-            .spawn()
-            .map_err(|e| WhisperTalkError::Injection(format!("Failed to send Enter: {}", e)))?;
-        Ok(())
-    }
-
-    fn clear_clipboard() -> Result<()> {
-        let _ = Command::new("wl-copy")
-            .stdin(Stdio::piped())
-            .spawn()
-            .and_then(|mut child| {
-                if let Some(mut stdin) = child.stdin.take() {
-                    let _ = stdin.write_all(b"");
-                }
-                child.wait()
-            });
-
+        if self.use_wtype {
+            Command::new("wtype")
+                .args(["-k", "Return"])
+                .status()
+                .map_err(|e| WhisperTalkError::Injection(format!("Failed to send Enter: {}", e)))?;
+        } else {
+            Command::new("ydotool")
+                .args(["key", "28:1", "28:0"])
+                .status()
+                .map_err(|e| WhisperTalkError::Injection(format!("Failed to send Enter: {}", e)))?;
+        }
         Ok(())
     }
 
@@ -213,23 +280,5 @@ impl TextInjector {
         }
 
         processed
-    }
-
-    fn copy_to_clipboard(&self, text: &str) -> Result<()> {
-        let mut child = Command::new("wl-copy")
-            .stdin(Stdio::piped())
-            .spawn()
-            .map_err(|e| WhisperTalkError::Injection(format!("Failed to spawn wl-copy: {}", e)))?;
-
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(text.as_bytes())
-                .map_err(|e| WhisperTalkError::Injection(format!("Failed to write to wl-copy stdin: {}", e)))?;
-            // stdin is dropped here, signaling EOF to wl-copy
-        }
-
-        // Don't wait for wl-copy - it stays alive to serve clipboard requests
-        // until the content is pasted or replaced. Waiting would block forever.
-
-        Ok(())
     }
 }

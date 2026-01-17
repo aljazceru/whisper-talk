@@ -13,7 +13,7 @@ use crate::transcription::WhisperBackend;
 use crate::types::{Config, RecordingMode};
 use crate::visualizer::daemon::MicOsdDaemon;
 use parking_lot::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -48,6 +48,10 @@ pub struct Application {
     recovery_tx: Arc<Mutex<Option<mpsc::Sender<RecoveryEvent>>>>,
     recovery_result: Arc<Mutex<String>>,
     runtime_handle: Handle,
+    // Streaming transcription state
+    streaming_active: Arc<AtomicBool>,
+    streaming_audio_position: Arc<AtomicUsize>,
+    streaming_typed_chars: Arc<AtomicUsize>,  // Track how many chars we've actually typed
 }
 
 #[derive(Clone, Debug)]
@@ -90,6 +94,10 @@ impl Application {
             recovery_tx: Arc::new(Mutex::new(Some(recovery_tx))),
             recovery_result: Arc::new(Mutex::new(String::new())),
             runtime_handle: Handle::current(),
+            // Streaming state
+            streaming_active: Arc::new(AtomicBool::new(false)),
+            streaming_audio_position: Arc::new(AtomicUsize::new(0)),
+            streaming_typed_chars: Arc::new(AtomicUsize::new(0)),
         };
 
         app.initialize_subsystems()?;
@@ -197,7 +205,115 @@ impl Application {
 
         *self.recording_state.lock() = RecordingState::Recording;
 
+        // Check if streaming mode is enabled
+        let config = self.config.lock();
+        let streaming_mode = config.transcription.streaming_mode;
+        let chunk_ms = config.transcription.streaming_chunk_ms;
+        drop(config);
+
+        if streaming_mode {
+            // Reset streaming state
+            self.streaming_active.store(true, Ordering::SeqCst);
+            self.streaming_audio_position.store(0, Ordering::SeqCst);
+            self.streaming_typed_chars.store(0, Ordering::SeqCst);
+
+            // Start streaming transcription task
+            let app = self.clone();
+            self.runtime_handle.spawn(async move {
+                app.streaming_transcription_loop(chunk_ms).await;
+            });
+        }
+
         self.write_status_files();
+    }
+
+    async fn streaming_transcription_loop(&self, chunk_ms: u64) {
+        let chunk_duration = Duration::from_millis(chunk_ms);
+        let min_samples_for_transcription = 16000; // ~1 second of audio at 16kHz
+        let mut committed_text = String::new();
+
+        println!("Streaming transcription started (chunk interval: {}ms)", chunk_ms);
+
+        while self.streaming_active.load(Ordering::SeqCst) {
+            sleep(chunk_duration).await;
+
+            if !self.streaming_active.load(Ordering::SeqCst) {
+                break;
+            }
+
+            // Get all audio from the beginning
+            let (full_audio, buffer_len) = {
+                let audio = self.audio_capture.lock();
+                if let Some(ref a) = audio.as_ref() {
+                    match a.get_audio_chunk(0) {
+                        Ok(result) => result,
+                        Err(e) => {
+                            eprintln!("Failed to get audio: {:?}", e);
+                            continue;
+                        }
+                    }
+                } else {
+                    continue;
+                }
+            };
+
+            // Skip if not enough audio
+            if full_audio.len() < min_samples_for_transcription {
+                continue;
+            }
+
+            // Transcribe with context
+            let backend = self.whisper_backend.clone();
+            let audio_vec = full_audio;
+            let previous_text = committed_text.clone();
+
+            let result = tokio::task::spawn_blocking(move || {
+                let wb = backend.lock();
+                if let Some(ref b) = wb.as_ref() {
+                    b.transcribe_streaming(&audio_vec, &previous_text)
+                } else {
+                    Err(WhisperTalkError::Transcription("Backend not loaded".to_string()))
+                }
+            }).await;
+
+            match result {
+                Ok(Ok((full_text, new_text))) => {
+                    // Update audio position
+                    self.streaming_audio_position.store(buffer_len, Ordering::SeqCst);
+
+                    if !new_text.is_empty() {
+                        // Prepare text to type (handle spacing)
+                        let text_to_type = if !committed_text.is_empty() && !new_text.starts_with(' ') && !new_text.starts_with(|c: char| c.is_ascii_punctuation()) {
+                             format!(" {}", new_text)
+                        } else {
+                            new_text.clone()
+                        };
+
+                        if !text_to_type.trim().is_empty() {
+                            println!("Streaming: \"{}\"", text_to_type);
+                            if let Err(e) = self.inject_text(&text_to_type).await {
+                                eprintln!("Failed to inject text: {:?}", e);
+                            }
+                        }
+
+                        // Update committed text with the *full* text returned by Whisper
+                        // This ensures our context for the next run is exactly what Whisper sees
+                        committed_text = full_text;
+                        
+                        // Update typed count
+                        self.streaming_typed_chars.store(committed_text.len(), Ordering::SeqCst);
+                    }
+                }
+                Ok(Err(e)) => {
+                    eprintln!("Streaming transcription error: {:?}", e);
+                }
+                Err(e) => {
+                    eprintln!("Streaming task error: {:?}", e);
+                }
+            }
+        }
+
+        println!("Streaming transcription stopped");
     }
 
     fn stop_recording(&self) {
@@ -209,12 +325,37 @@ impl Application {
 
         println!("Stopping recording...");
 
+        // Check if streaming mode was active
+        let was_streaming = self.streaming_active.load(Ordering::SeqCst);
+
+        // Stop streaming transcription
+        if was_streaming {
+            self.streaming_active.store(false, Ordering::SeqCst);
+        }
+
         let audio_data = if let Some(ref mut audio) = self.audio_capture.lock().as_mut() {
             audio.stop_recording().unwrap_or_default()
         } else {
             Vec::new()
         };
 
+        // If streaming mode was active, we're done (text was already output incrementally)
+        if was_streaming {
+            *self.recording_state.lock() = RecordingState::Idle;
+            self.write_status_files();
+
+            if let Some(ref feedback) = self.audio_feedback.lock().as_ref() {
+                let _ = feedback.play_stop();
+            }
+
+            let typed_chars = self.streaming_typed_chars.load(Ordering::SeqCst);
+            if typed_chars > 0 {
+                println!("Streaming complete ({} characters typed)", typed_chars);
+            }
+            return;
+        }
+
+        // Batch mode (non-streaming) - process all audio at once
         if audio_data.is_empty() {
             println!("No audio data captured");
             *self.recording_state.lock() = RecordingState::Idle;

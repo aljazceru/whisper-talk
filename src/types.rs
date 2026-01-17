@@ -25,7 +25,7 @@ pub enum PasteMode {
 
 impl Default for PasteMode {
     fn default() -> Self {
-        Self::CtrlShift
+        Self::Ctrl
     }
 }
 
@@ -110,6 +110,14 @@ pub struct TranscriptionConfig {
 
     #[serde(default = "default_hallucination_markers")]
     pub hallucination_markers: Vec<String>,
+
+    /// Enable real-time streaming transcription (types text as you speak)
+    #[serde(default = "default_streaming_mode")]
+    pub streaming_mode: bool,
+
+    /// How often to process audio chunks in streaming mode (milliseconds)
+    #[serde(default = "default_streaming_chunk_ms")]
+    pub streaming_chunk_ms: u64,
 }
 
 impl Default for TranscriptionConfig {
@@ -122,6 +130,8 @@ impl Default for TranscriptionConfig {
             word_overrides: HashMap::new(),
             whisper_prompt: default_whisper_prompt(),
             hallucination_markers: default_hallucination_markers(),
+            streaming_mode: default_streaming_mode(),
+            streaming_chunk_ms: default_streaming_chunk_ms(),
         }
     }
 }
@@ -134,7 +144,7 @@ pub struct InjectionConfig {
     #[serde(default)]
     pub auto_submit: bool,
 
-    #[serde(default)]
+    #[serde(default = "default_clipboard_behavior")]
     pub clipboard_behavior: bool,
 
     #[serde(default = "default_clipboard_clear_delay")]
@@ -259,4 +269,16 @@ fn default_stop_sound_volume() -> f64 {
 
 fn default_error_sound_volume() -> f64 {
     1.0
+}
+
+fn default_streaming_mode() -> bool {
+    true  // Enable streaming by default
+}
+
+fn default_streaming_chunk_ms() -> u64 {
+    2000  // Process every 2 seconds
+}
+
+fn default_clipboard_behavior() -> bool {
+    true
 }
