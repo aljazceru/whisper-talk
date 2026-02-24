@@ -1,13 +1,14 @@
+mod api;
 mod app;
 mod audio;
 mod cli;
 mod config;
 mod device;
 mod error;
-mod integration;
 mod injection;
 mod input;
 mod instance_lock;
+mod integration;
 mod logger;
 mod paths;
 mod transcription;
@@ -17,12 +18,13 @@ mod visualizer;
 use app::Application;
 use config::ConfigManager;
 use paths::Paths;
-use tokio::signal::unix::{signal, SignalKind};
+use std::net::SocketAddr;
 use tokio::select;
+use tokio::signal::unix::{signal, SignalKind};
 use tracing::{error, info};
 
-pub use cli::Cli;
 use clap::Parser;
+pub use cli::Cli;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -39,14 +41,14 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("Failed to initialize logging: {}", e);
     }
 
-    if matches!(cli.command, cli::Commands::Daemon) {
-        return run_daemon().await;
+    if let cli::Commands::Daemon(args) = cli.command {
+        return run_daemon(args).await;
     }
 
     cli::run_cli(cli)
 }
 
-async fn run_daemon() -> anyhow::Result<()> {
+async fn run_daemon(daemon: cli::DaemonArgs) -> anyhow::Result<()> {
     info!("whisper-talk daemon starting...");
 
     // Load config from file
@@ -54,12 +56,15 @@ async fn run_daemon() -> anyhow::Result<()> {
     let config_manager = ConfigManager::new(paths)?;
     let config = config_manager.get_config().clone();
 
-    info!("Loaded config from {}", config_manager.get_config_path().display());
+    info!(
+        "Loaded config from {}",
+        config_manager.get_config_path().display()
+    );
     info!("Using shortcut: {}", config.shortcuts.primary_shortcut);
     info!("Using backend: {:?}", config.transcription.backend);
     info!("Using model: {}", config.transcription.model);
 
-    let mut app = Application::new(config)?;
+    let mut app = Application::from_config(config)?;
 
     if let Err(e) = app.acquire_instance_lock() {
         error!("Failed to acquire instance lock: {}", e);
@@ -73,15 +78,37 @@ async fn run_daemon() -> anyhow::Result<()> {
 
     app.start().await?;
 
+    let mut api_task = None;
+    let mut api_shutdown = None;
+    let mut api_listener_addr: Option<SocketAddr> = None;
+
+    if let Some(bind_addr) = daemon.api_bind {
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+        api_task =
+            Some(api::spawn_api_server(app.api_application(), bind_addr, shutdown_rx).await?);
+        api_shutdown = Some(shutdown_tx);
+        api_listener_addr = Some(bind_addr);
+    }
+
+    if let Some(address) = api_listener_addr {
+        info!("OpenAI-compatible API exposed on {}", address);
+    }
+
     // Main event loop
     loop {
         select! {
             _ = sigterm.recv() => {
                 info!("Received SIGTERM, shutting down...");
+                if let Some(shutdown_tx) = api_shutdown.take() {
+                    let _ = shutdown_tx.send(());
+                }
                 break;
             }
             _ = sigint.recv() => {
                 info!("Received SIGINT, shutting down...");
+                if let Some(shutdown_tx) = api_shutdown.take() {
+                    let _ = shutdown_tx.send(());
+                }
                 break;
             }
             _ = sighup.recv() => {
@@ -100,9 +127,16 @@ async fn run_daemon() -> anyhow::Result<()> {
             }
             _ = app.run_event_loop() => {
                 info!("Event loop exited");
+                if let Some(shutdown_tx) = api_shutdown.take() {
+                    let _ = shutdown_tx.send(());
+                }
                 break;
             }
         }
+    }
+
+    if let Some(api_task) = api_task {
+        let _ = api_task.await;
     }
 
     app.stop().await?;

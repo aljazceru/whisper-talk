@@ -1,4 +1,4 @@
-use crate::error::{WhisperTalkError, Result};
+use crate::error::{Result, WhisperTalkError};
 use std::fs::File;
 use std::os::unix::io::AsRawFd;
 
@@ -12,6 +12,7 @@ impl InstanceLock {
             .read(true)
             .write(true)
             .create(true)
+            .truncate(true)
             .open(lock_file_path)
             .map_err(|e| WhisperTalkError::System(format!("Failed to open lock file: {}", e)))?;
 

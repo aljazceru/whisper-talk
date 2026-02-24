@@ -1,11 +1,11 @@
-use crate::error::{WhisperTalkError, Result};
+use crate::error::{Result, WhisperTalkError};
 use crate::paths::Paths;
 use crate::types::TranscriptionConfig;
-use whisper_rs::{WhisperContext, FullParams, WhisperContextParameters, SamplingStrategy};
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::time::Duration;
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 const MAX_RETRIES: u32 = 3;
 const RETRY_DELAY_MS: u64 = 2000;
@@ -29,18 +29,16 @@ impl WhisperBackend {
     }
 
     fn detect_gpu() -> bool {
-        if let Ok(output) = std::process::Command::new("nvidia-smi")
-            .output()
-        {
-            if output.status.success() && !String::from_utf8_lossy(&output.stdout).contains("not found") {
+        if let Ok(output) = std::process::Command::new("nvidia-smi").output() {
+            if output.status.success()
+                && !String::from_utf8_lossy(&output.stdout).contains("not found")
+            {
                 println!("Detected NVIDIA GPU, enabling CUDA support");
                 return true;
             }
         }
 
-        if let Ok(output) = std::process::Command::new("rocm-smi")
-            .output()
-        {
+        if let Ok(output) = std::process::Command::new("rocm-smi").output() {
             if output.status.success() {
                 println!("Detected AMD GPU, enabling ROCm support");
                 return true;
@@ -55,7 +53,10 @@ impl WhisperBackend {
         let model_path = self.find_model_path(paths)?;
 
         if !model_path.exists() {
-            println!("Model not found, attempting download to: {}", model_path.display());
+            println!(
+                "Model not found, attempting download to: {}",
+                model_path.display()
+            );
             self.download_model(&model_path)?;
         }
 
@@ -63,7 +64,10 @@ impl WhisperBackend {
             .to_str()
             .ok_or_else(|| WhisperTalkError::Transcription("Invalid model path".to_string()))?;
 
-        println!("Loading Whisper model from: {} (GPU: {})", model_path_str, self.use_gpu);
+        println!(
+            "Loading Whisper model from: {} (GPU: {})",
+            model_path_str, self.use_gpu
+        );
 
         let context_params = WhisperContextParameters {
             use_gpu: self.use_gpu,
@@ -77,37 +81,53 @@ impl WhisperBackend {
         Ok(true)
     }
 
-    pub fn transcribe(&self, audio_data: &[f32]) -> Result<String> {
-        let context = self.context.as_ref()
+    pub fn transcribe_with_options(
+        &self,
+        audio_data: &[f32],
+        language: Option<&str>,
+        prompt: Option<&str>,
+        translate: bool,
+    ) -> Result<String> {
+        let context = self
+            .context
+            .as_ref()
             .ok_or_else(|| WhisperTalkError::Transcription("Model not loaded".to_string()))?;
 
-        let mut state = context.create_state()
-            .map_err(|e| WhisperTalkError::Transcription(format!("Failed to create state: {}", e)))?;
+        let mut state = context.create_state().map_err(|e| {
+            WhisperTalkError::Transcription(format!("Failed to create state: {}", e))
+        })?;
 
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 5 });
 
         params.set_n_threads(self.config.threads as i32);
         params.set_offset_ms(0);
         params.set_duration_ms(0);
-        params.set_translate(false);
+        params.set_translate(translate);
         params.set_no_speech_thold(0.6f32);
         params.set_temperature(0.0f32);
         params.set_max_initial_ts(1.0f32);
         params.set_max_len(224);
 
-        if let Some(ref lang) = self.config.language {
+        if let Some(lang) = language {
+            params.set_language(Some(lang));
+        } else if let Some(ref lang) = self.config.language {
             params.set_language(Some(lang.as_str()));
         } else {
             params.set_language(None);
         }
 
-        if !self.config.whisper_prompt.is_empty() {
+        if let Some(prompt) = prompt {
+            if !prompt.is_empty() {
+                params.set_initial_prompt(prompt);
+            }
+        } else if !self.config.whisper_prompt.is_empty() {
             params.set_initial_prompt(&self.config.whisper_prompt);
         }
 
         params.set_token_timestamps(false);
 
-        state.full(params, audio_data)
+        state
+            .full(params, audio_data)
             .map_err(|e| WhisperTalkError::Transcription(format!("Transcription failed: {}", e)))?;
 
         let mut transcription = String::new();
@@ -162,7 +182,10 @@ impl WhisperBackend {
             }
         }
 
-        Err(WhisperTalkError::ModelNotFound(format!("Model '{}' not found in any search path", self.model_name)))
+        Err(WhisperTalkError::ModelNotFound(format!(
+            "Model '{}' not found in any search path",
+            self.model_name
+        )))
     }
 
     fn download_model(&self, target_path: &PathBuf) -> Result<()> {
@@ -170,7 +193,9 @@ impl WhisperBackend {
             .file_name()
             .ok_or_else(|| WhisperTalkError::Transcription("Invalid model filename".to_string()))?
             .to_str()
-            .ok_or_else(|| WhisperTalkError::Transcription("Invalid model filename encoding".to_string()))?;
+            .ok_or_else(|| {
+                WhisperTalkError::Transcription("Invalid model filename encoding".to_string())
+            })?;
 
         let url = format!(
             "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
@@ -183,20 +208,26 @@ impl WhisperBackend {
             .timeout(Duration::from_secs(DOWNLOAD_TIMEOUT_SECONDS))
             .user_agent("gwhpr/0.1.0")
             .build()
-            .map_err(|e| WhisperTalkError::Transcription(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| {
+                WhisperTalkError::Transcription(format!("Failed to create HTTP client: {}", e))
+            })?;
 
-        let parent_dir = target_path
-            .parent()
-            .ok_or_else(|| WhisperTalkError::Transcription("Invalid model path parent".to_string()))?;
+        let parent_dir = target_path.parent().ok_or_else(|| {
+            WhisperTalkError::Transcription("Invalid model path parent".to_string())
+        })?;
 
-        fs::create_dir_all(parent_dir)
-            .map_err(|e| WhisperTalkError::Transcription(format!("Failed to create models directory: {}", e)))?;
+        fs::create_dir_all(parent_dir).map_err(|e| {
+            WhisperTalkError::Transcription(format!("Failed to create models directory: {}", e))
+        })?;
 
         let mut last_error = None;
 
         for attempt in 1..=MAX_RETRIES {
             if attempt > 1 {
-                println!("Retry {}/{} after {}ms delay...", attempt, MAX_RETRIES, RETRY_DELAY_MS);
+                println!(
+                    "Retry {}/{} after {}ms delay...",
+                    attempt, MAX_RETRIES, RETRY_DELAY_MS
+                );
                 std::thread::sleep(Duration::from_millis(RETRY_DELAY_MS));
             }
 
@@ -213,7 +244,8 @@ impl WhisperBackend {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| WhisperTalkError::Transcription("Download failed".to_string())))
+        Err(last_error
+            .unwrap_or_else(|| WhisperTalkError::Transcription("Download failed".to_string())))
     }
 
     fn download_with_progress(
@@ -222,10 +254,9 @@ impl WhisperBackend {
         url: &str,
         target_path: &PathBuf,
     ) -> Result<()> {
-        let response = client
-            .get(url)
-            .send()
-            .map_err(|e| WhisperTalkError::Transcription(format!("Failed to start download: {}", e)))?;
+        let response = client.get(url).send().map_err(|e| {
+            WhisperTalkError::Transcription(format!("Failed to start download: {}", e))
+        })?;
 
         if !response.status().is_success() {
             return Err(WhisperTalkError::Transcription(format!(
@@ -234,26 +265,26 @@ impl WhisperBackend {
             )));
         }
 
-        let total_size = response
-            .content_length()
-            .unwrap_or(0);
+        let total_size = response.content_length().unwrap_or(0);
 
-        let file = File::create(target_path)
-            .map_err(|e| WhisperTalkError::Transcription(format!("Failed to create file: {}", e)))?;
+        let file = File::create(target_path).map_err(|e| {
+            WhisperTalkError::Transcription(format!("Failed to create file: {}", e))
+        })?;
 
         let mut writer = BufWriter::new(file);
         let mut downloaded = 0u64;
         let mut last_update = std::time::Instant::now();
 
-        let bytes = response
-            .bytes()
-            .map_err(|e| WhisperTalkError::Transcription(format!("Failed to read response: {}", e)))?;
+        let bytes = response.bytes().map_err(|e| {
+            WhisperTalkError::Transcription(format!("Failed to read response: {}", e))
+        })?;
 
         let chunk_size = 8192;
 
         for chunk in bytes.chunks(chunk_size) {
-            writer.write_all(chunk)
-                .map_err(|e| WhisperTalkError::Transcription(format!("Failed to write chunk: {}", e)))?;
+            writer.write_all(chunk).map_err(|e| {
+                WhisperTalkError::Transcription(format!("Failed to write chunk: {}", e))
+            })?;
 
             downloaded += chunk.len() as u64;
 
@@ -261,12 +292,16 @@ impl WhisperBackend {
                 let percent = (downloaded as f64 / total_size as f64) * 100.0;
                 let mb_downloaded = downloaded as f64 / (1024.0 * 1024.0);
                 let mb_total = total_size as f64 / (1024.0 * 1024.0);
-                println!("Download progress: {:.1}% ({:.1}/{:.1} MB)", percent, mb_downloaded, mb_total);
+                println!(
+                    "Download progress: {:.1}% ({:.1}/{:.1} MB)",
+                    percent, mb_downloaded, mb_total
+                );
                 last_update = std::time::Instant::now();
             }
         }
 
-        writer.flush()
+        writer
+            .flush()
             .map_err(|e| WhisperTalkError::Transcription(format!("Failed to flush file: {}", e)))?;
 
         println!("Model download complete");

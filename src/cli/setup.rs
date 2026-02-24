@@ -1,10 +1,10 @@
-use anyhow::Result;
-use clap::Args;
-use dialoguer::{Confirm, Select};
 use crate::audio::capture::AudioCapture;
 use crate::paths::Paths;
 use crate::transcription::WhisperBackend;
 use crate::types::{AudioConfig, Config, TranscriptionBackend};
+use anyhow::Result;
+use clap::Args;
+use dialoguer::{Confirm, Select};
 
 #[derive(Args, Debug)]
 pub struct SetupArgs {}
@@ -29,7 +29,10 @@ impl SetupWizard {
 
         // Show defaults
         println!("Default configuration:");
-        println!("  Shortcut:   {} (toggle recording)", config.shortcuts.primary_shortcut);
+        println!(
+            "  Shortcut:   {} (toggle recording)",
+            config.shortcuts.primary_shortcut
+        );
         println!("  Model:      base (good balance of speed/accuracy)");
         println!("  Microphone: System default");
         println!();
@@ -132,7 +135,8 @@ impl SetupWizard {
                     3 => "medium",
                     4 => "large-v3",
                     _ => "base",
-                }.to_string())
+                }
+                .to_string())
             }
             TranscriptionBackend::ParakeetV3 => {
                 println!("Parakeet-v3 model will be downloaded.");
@@ -166,13 +170,7 @@ impl SetupWizard {
 
         let device_items: Vec<String> = devices
             .iter()
-            .map(|d| {
-                format!(
-                    "{} ({} Hz)",
-                    d.name,
-                    d.default_sample_rate
-                )
-            })
+            .map(|d| format!("{} ({} Hz)", d.name, d.default_sample_rate))
             .collect();
 
         let selection = Select::new()
@@ -235,8 +233,10 @@ impl SetupWizard {
         println!("Model will be saved to: {}", paths.models_dir.display());
         println!();
 
-        let mut config = crate::types::TranscriptionConfig::default();
-        config.model = model.to_string();
+        let config = crate::types::TranscriptionConfig {
+            model: model.to_string(),
+            ..Default::default()
+        };
 
         let mut backend = WhisperBackend::new(&config);
         backend.initialize(paths)?;
@@ -249,8 +249,7 @@ impl SetupWizard {
         let service_dir = std::path::PathBuf::from("/etc/systemd/user");
         let service_file = service_dir.join("whisper-talk.service");
 
-        let service_content = format!(
-            r#"[Unit]
+        let service_content = r#"[Unit]
 Description=Whisper Talk Voice Dictation
 After=graphical-session.target
 
@@ -262,13 +261,16 @@ RestartSec=5
 
 [Install]
 WantedBy=default.target
-"#,
+"#
+        .to_string();
+
+        println!(
+            "Creating systemd service file at: {}",
+            service_file.display()
         );
 
-        println!("Creating systemd service file at: {}", service_file.display());
-
         if std::process::Command::new("sudo")
-            .args(&["mkdir", "-p", service_dir.to_str().unwrap()])
+            .args(["mkdir", "-p", service_dir.to_str().unwrap()])
             .status()
             .map_err(|e| anyhow::anyhow!("Failed to create service directory: {}", e))?
             .success()
@@ -305,7 +307,9 @@ WantedBy=default.target
     fn save_config(&self, config: Config, paths: &Paths) -> Result<()> {
         println!("Saving configuration to: {}", paths.config_file.display());
 
-        let config_dir = paths.config_file.parent()
+        let config_dir = paths
+            .config_file
+            .parent()
             .ok_or_else(|| anyhow::anyhow!("Invalid config directory"))?;
 
         std::fs::create_dir_all(config_dir)?;
@@ -322,7 +326,10 @@ WantedBy=default.target
         println!("  Backend:  {:?}", config.transcription.backend);
         println!("  Model:    {}", config.transcription.model);
         println!("  Threads:  {}", config.transcription.threads);
-        println!("  Audio:    {}", config.audio.device_name.as_ref().map(|s| s.as_str()).unwrap_or("default"));
+        println!(
+            "  Audio:    {}",
+            config.audio.device_name.as_deref().unwrap_or("default")
+        );
 
         Ok(())
     }

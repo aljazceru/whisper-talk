@@ -55,7 +55,10 @@ pub fn run_config(args: ConfigArgs) -> Result<()> {
 
 fn run_config_init(force: bool, paths: &Paths) -> Result<()> {
     if paths.config_file.exists() && !force {
-        println!("Configuration file already exists: {}", paths.config_file.display());
+        println!(
+            "Configuration file already exists: {}",
+            paths.config_file.display()
+        );
         println!("Use --force to overwrite");
         return Ok(());
     }
@@ -71,7 +74,10 @@ fn run_config_init(force: bool, paths: &Paths) -> Result<()> {
 
     std::fs::write(&paths.config_file, content)?;
 
-    println!("Configuration file created: {}", paths.config_file.display());
+    println!(
+        "Configuration file created: {}",
+        paths.config_file.display()
+    );
     println!("\nDefault settings:");
     println!("  Shortcut: {}", config.shortcuts.primary_shortcut);
     println!("  Recording mode: {:?}", config.shortcuts.recording_mode);
@@ -84,7 +90,10 @@ fn run_config_init(force: bool, paths: &Paths) -> Result<()> {
 
 fn run_config_show(format: &str, paths: &Paths) -> Result<()> {
     if !paths.config_file.exists() {
-        println!("No configuration file found at: {}", paths.config_file.display());
+        println!(
+            "No configuration file found at: {}",
+            paths.config_file.display()
+        );
         println!("Run 'whisper-talk config init' to create one.");
         return Ok(());
     }
@@ -97,14 +106,17 @@ fn run_config_show(format: &str, paths: &Paths) -> Result<()> {
             let json = serde_json::to_string_pretty(config)?;
             println!("{}", json);
         }
-        "pretty" | _ => {
+        "pretty" => {
             println!("Configuration file: {}", paths.config_file.display());
             println!();
             println!("=== Shortcuts ===");
             println!("  Primary shortcut: {}", config.shortcuts.primary_shortcut);
             println!("  Recording mode: {:?}", config.shortcuts.recording_mode);
             println!("  Grab keys: {}", config.shortcuts.grab_keys);
-            println!("  Auto mode threshold: {}ms", config.shortcuts.auto_mode_threshold_ms);
+            println!(
+                "  Auto mode threshold: {}ms",
+                config.shortcuts.auto_mode_threshold_ms
+            );
             println!();
             println!("=== Audio ===");
             println!("  Device ID: {:?}", config.audio.device_id);
@@ -112,20 +124,83 @@ fn run_config_show(format: &str, paths: &Paths) -> Result<()> {
             println!("  Vendor ID: {:?}", config.audio.device_vendor_id);
             println!("  Model ID: {:?}", config.audio.device_model_id);
             println!("  Mute detection: {}", config.audio.mute_detection);
-            println!("  Zero volume threshold: {}", config.audio.zero_volume_threshold);
+            println!(
+                "  Zero volume threshold: {}",
+                config.audio.zero_volume_threshold
+            );
             println!();
             println!("=== Transcription ===");
             println!("  Backend: {:?}", config.transcription.backend);
             println!("  Model: {}", config.transcription.model);
             println!("  Threads: {}", config.transcription.threads);
             println!("  Language: {:?}", config.transcription.language);
-            println!("  Word overrides: {} entries", config.transcription.word_overrides.len());
+            println!(
+                "  Word overrides: {} entries",
+                config.transcription.word_overrides.len()
+            );
             println!();
             println!("=== Injection ===");
             println!("  Paste mode: {:?}", config.injection.paste_mode);
             println!("  Auto submit: {}", config.injection.auto_submit);
-            println!("  Clipboard behavior: {}", config.injection.clipboard_behavior);
-            println!("  Clipboard clear delay: {}s", config.injection.clipboard_clear_delay);
+            println!(
+                "  Clipboard behavior: {}",
+                config.injection.clipboard_behavior
+            );
+            println!(
+                "  Clipboard clear delay: {}s",
+                config.injection.clipboard_clear_delay
+            );
+            println!();
+            println!("=== Feedback ===");
+            println!("  Mic OSD enabled: {}", config.feedback.mic_osd_enabled);
+            println!("  Audio feedback: {}", config.feedback.audio_feedback);
+            println!("  Master volume: {}", config.feedback.master_volume);
+        }
+        _ => {
+            println!("Unsupported format '{}', using pretty output", format);
+            println!("Configuration file: {}", paths.config_file.display());
+            println!();
+            println!("=== Shortcuts ===");
+            println!("  Primary shortcut: {}", config.shortcuts.primary_shortcut);
+            println!("  Recording mode: {:?}", config.shortcuts.recording_mode);
+            println!("  Grab keys: {}", config.shortcuts.grab_keys);
+            println!(
+                "  Auto mode threshold: {}ms",
+                config.shortcuts.auto_mode_threshold_ms
+            );
+            println!();
+            println!("=== Audio ===");
+            println!("  Device ID: {:?}", config.audio.device_id);
+            println!("  Device name: {:?}", config.audio.device_name);
+            println!("  Vendor ID: {:?}", config.audio.device_vendor_id);
+            println!("  Model ID: {:?}", config.audio.device_model_id);
+            println!("  Mute detection: {}", config.audio.mute_detection);
+            println!(
+                "  Zero volume threshold: {}",
+                config.audio.zero_volume_threshold
+            );
+            println!();
+            println!("=== Transcription ===");
+            println!("  Backend: {:?}", config.transcription.backend);
+            println!("  Model: {}", config.transcription.model);
+            println!("  Threads: {}", config.transcription.threads);
+            println!("  Language: {:?}", config.transcription.language);
+            println!(
+                "  Word overrides: {} entries",
+                config.transcription.word_overrides.len()
+            );
+            println!();
+            println!("=== Injection ===");
+            println!("  Paste mode: {:?}", config.injection.paste_mode);
+            println!("  Auto submit: {}", config.injection.auto_submit);
+            println!(
+                "  Clipboard behavior: {}",
+                config.injection.clipboard_behavior
+            );
+            println!(
+                "  Clipboard clear delay: {}s",
+                config.injection.clipboard_clear_delay
+            );
             println!();
             println!("=== Feedback ===");
             println!("  Mic OSD enabled: {}", config.feedback.mic_osd_enabled);
@@ -139,7 +214,10 @@ fn run_config_show(format: &str, paths: &Paths) -> Result<()> {
 
 fn run_config_edit(paths: &Paths) -> Result<()> {
     if !paths.config_file.exists() {
-        println!("No configuration file found at: {}", paths.config_file.display());
+        println!(
+            "No configuration file found at: {}",
+            paths.config_file.display()
+        );
         println!("Run 'whisper-talk config init' to create one.");
         return Ok(());
     }
@@ -164,9 +242,7 @@ fn run_config_edit(paths: &Paths) -> Result<()> {
 
     println!("Opening {} with {}...", paths.config_file.display(), editor);
 
-    let status = Command::new(&editor)
-        .arg(&paths.config_file)
-        .status()?;
+    let status = Command::new(&editor).arg(&paths.config_file).status()?;
 
     if status.success() {
         // Validate the config after editing
@@ -191,7 +267,10 @@ fn run_config_edit(paths: &Paths) -> Result<()> {
 
 fn run_config_get(key: &str, paths: &Paths) -> Result<()> {
     if !paths.config_file.exists() {
-        anyhow::bail!("No configuration file found at: {}", paths.config_file.display());
+        anyhow::bail!(
+            "No configuration file found at: {}",
+            paths.config_file.display()
+        );
     }
 
     let config_manager = ConfigManager::new(paths.clone())?;
@@ -225,7 +304,9 @@ fn get_config_value(config: &crate::types::Config, key: &str) -> Result<String> 
         ["shortcuts", "primary_shortcut"] => Ok(config.shortcuts.primary_shortcut.clone()),
         ["shortcuts", "recording_mode"] => Ok(format!("{:?}", config.shortcuts.recording_mode)),
         ["shortcuts", "grab_keys"] => Ok(config.shortcuts.grab_keys.to_string()),
-        ["shortcuts", "auto_mode_threshold_ms"] => Ok(config.shortcuts.auto_mode_threshold_ms.to_string()),
+        ["shortcuts", "auto_mode_threshold_ms"] => {
+            Ok(config.shortcuts.auto_mode_threshold_ms.to_string())
+        }
 
         ["audio", "device_id"] => Ok(format!("{:?}", config.audio.device_id)),
         ["audio", "device_name"] => Ok(format!("{:?}", config.audio.device_name)),
@@ -283,7 +364,9 @@ fn set_config_value(config: &mut crate::types::Config, key: &str, value: &str) -
         ["transcription", "backend"] => {
             config.transcription.backend = match value.to_lowercase().as_str() {
                 "whisper" => crate::types::TranscriptionBackend::Whisper,
-                "parakeet" | "parakeet_v3" | "parakeetv3" => crate::types::TranscriptionBackend::ParakeetV3,
+                "parakeet" | "parakeet_v3" | "parakeetv3" => {
+                    crate::types::TranscriptionBackend::ParakeetV3
+                }
                 _ => anyhow::bail!("Invalid backend: {}", value),
             };
         }
@@ -294,11 +377,12 @@ fn set_config_value(config: &mut crate::types::Config, key: &str, value: &str) -
             config.transcription.threads = value.parse()?;
         }
         ["transcription", "language"] => {
-            config.transcription.language = if value.is_empty() || value == "null" || value == "auto" {
-                None
-            } else {
-                Some(value.to_string())
-            };
+            config.transcription.language =
+                if value.is_empty() || value == "null" || value == "auto" {
+                    None
+                } else {
+                    Some(value.to_string())
+                };
         }
 
         ["injection", "paste_mode"] => {

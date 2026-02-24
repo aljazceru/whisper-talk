@@ -1,10 +1,10 @@
-use crate::audio::AudioCapture;
 use crate::audio::feedback::AudioFeedback;
-use crate::config::ConfigManager;
-use crate::device::monitor::{DeviceMonitor, extract_device_properties, DeviceProperties};
-use crate::device::suspend_monitor::SuspendMonitor;
 use crate::audio::pulse_monitor::PulseMonitor;
-use crate::error::{WhisperTalkError, Result};
+use crate::audio::AudioCapture;
+use crate::config::ConfigManager;
+use crate::device::monitor::{extract_device_properties, DeviceMonitor, DeviceProperties};
+use crate::device::suspend_monitor::SuspendMonitor;
+use crate::error::{Result, WhisperTalkError};
 use crate::injection::TextInjector;
 use crate::input::GlobalShortcuts;
 use crate::instance_lock::InstanceLock;
@@ -12,14 +12,14 @@ use crate::paths::Paths;
 use crate::transcription::WhisperBackend;
 use crate::types::{Config, RecordingMode};
 use crate::visualizer::daemon::MicOsdDaemon;
+use anyhow;
 use parking_lot::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
-use tokio::runtime::Handle;
-use anyhow;
 
 #[derive(Clone, Debug, PartialEq)]
 enum RecordingState {
@@ -64,7 +64,7 @@ pub struct OwnedApplication {
 }
 
 impl Application {
-    pub fn new(_config: Config) -> Result<OwnedApplication> {
+    pub fn from_config(_config: Config) -> Result<OwnedApplication> {
         let paths = Arc::new(Paths::new()?);
         let config_manager = ConfigManager::new((*paths).clone())?;
         let loaded_config = config_manager.get_config().clone();
@@ -184,12 +184,15 @@ impl Application {
         if let Some(ref mut audio) = self.audio_capture.lock().as_mut() {
             if let Err(e) = audio.start_recording() {
                 eprintln!("Failed to start recording: {:?}", e);
-                self.handle_error(anyhow::anyhow!("Failed to start recording: {}", e), RecoveryEvent::AudioFailure);
+                self.handle_error(
+                    anyhow::anyhow!("Failed to start recording: {}", e),
+                    RecoveryEvent::AudioFailure,
+                );
                 return;
             }
         }
 
-        if let Some(ref feedback) = self.audio_feedback.lock().as_ref() {
+        if let Some(feedback) = self.audio_feedback.lock().as_ref() {
             if let Err(e) = feedback.play_start() {
                 eprintln!("Failed to play start sound: {:?}", e);
             }
@@ -230,7 +233,7 @@ impl Application {
         drop(config);
 
         if mute_detection {
-            let is_zero_volume = if let Some(ref audio) = self.audio_capture.lock().as_ref() {
+            let is_zero_volume = if let Some(audio) = self.audio_capture.lock().as_ref() {
                 audio.detect_zero_volume(&audio_data)
             } else {
                 false
@@ -238,7 +241,7 @@ impl Application {
 
             if is_zero_volume {
                 println!("Microphone muted (zero volume), skipping transcription");
-                if let Some(ref feedback) = self.audio_feedback.lock().as_ref() {
+                if let Some(feedback) = self.audio_feedback.lock().as_ref() {
                     let _ = feedback.play_error();
                 }
                 *self.recording_state.lock() = RecordingState::Idle;
@@ -258,7 +261,7 @@ impl Application {
             *app.recording_state.lock() = RecordingState::Idle;
             app.write_status_files();
 
-            if let Some(ref feedback) = app.audio_feedback.lock().as_ref() {
+            if let Some(feedback) = app.audio_feedback.lock().as_ref() {
                 let _ = feedback.play_stop();
             }
 
@@ -270,14 +273,7 @@ impl Application {
     }
 
     async fn process_audio(&self, audio_data: &[f32]) -> Result<String> {
-        let backend = self.whisper_backend.clone();
-        let audio_vec = audio_data.to_vec();
-
-        let text = tokio::task::spawn_blocking(move || {
-            let mut wb = backend.lock();
-            let b = wb.as_mut().ok_or_else(|| anyhow::anyhow!("Whisper backend not loaded"))?;
-            b.transcribe(&audio_vec).map_err(|e| anyhow::anyhow!("Transcription error: {}", e))
-        }).await.map_err(|e| WhisperTalkError::Transcription(format!("Join error: {}", e)))??;
+        let text = self.transcribe_audio(audio_data, None, None, false).await?;
 
         if text.is_empty() {
             println!("No transcribed text");
@@ -295,20 +291,28 @@ impl Application {
         // Use block scope to ensure MutexGuard is dropped before await
         let (word_overrides, injector) = {
             let config = self.config.lock();
-            (config.transcription.word_overrides.clone(), self.text_injector.clone())
+            (
+                config.transcription.word_overrides.clone(),
+                self.text_injector.clone(),
+            )
         };
 
         let text = text.to_string();
         let overrides = word_overrides;
 
-        let result = tokio::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
             let mut inj = injector.lock();
-            let i = inj.as_mut().ok_or_else(|| anyhow::anyhow!("Text injector not loaded"))?;
+            let i = inj
+                .as_mut()
+                .ok_or_else(|| anyhow::anyhow!("Text injector not loaded"))?;
             i.set_word_overrides(overrides);
-            i.inject_text(&text).map_err(|e| anyhow::anyhow!("Injection error: {}", e))
-        }).await.map_err(|e| WhisperTalkError::Injection(format!("Join error: {}", e)))??;
+            i.inject_text(&text)
+                .map_err(|e| anyhow::anyhow!("Injection error: {}", e))
+        })
+        .await
+        .map_err(|e| WhisperTalkError::Injection(format!("Join error: {}", e)))??;
 
-        Ok(result)
+        Ok(())
     }
 
     async fn recover_audio_capture(&self) -> Result<()> {
@@ -325,15 +329,19 @@ impl Application {
         // Use block_in_place instead of spawn_blocking because AudioCapture's stream is not Send
         let result = tokio::task::block_in_place(|| -> std::result::Result<(), String> {
             let mut a = audio.lock();
-            let a = a.as_mut().ok_or_else(|| "Audio capture not loaded".to_string())?;
-            a.recover_stream().map_err(|e| format!("Recovery failed: {}", e))
+            let a = a
+                .as_mut()
+                .ok_or_else(|| "Audio capture not loaded".to_string())?;
+            a.recover_stream()
+                .map_err(|e| format!("Recovery failed: {}", e))
         });
 
         match result {
             Ok(()) => {
                 eprintln!("Audio capture recovered successfully");
                 *self.recovery_cooldown.lock() = now;
-                self.last_recovery_time.store(now.elapsed().as_secs(), Ordering::Relaxed);
+                self.last_recovery_time
+                    .store(now.elapsed().as_secs(), Ordering::Relaxed);
                 *self.recovery_result.lock() = "success".to_string();
                 self.write_status_files();
                 Ok(())
@@ -366,8 +374,11 @@ impl Application {
                 // Use block_in_place instead of spawn_blocking because AudioCapture's stream is not Send
                 let result = tokio::task::block_in_place(|| -> std::result::Result<(), String> {
                     let mut a = audio.lock();
-                    let a = a.as_mut().ok_or_else(|| "Audio capture not loaded".to_string())?;
-                    a.recover_stream().map_err(|e| format!("Recovery failed: {}", e))
+                    let a = a
+                        .as_mut()
+                        .ok_or_else(|| "Audio capture not loaded".to_string())?;
+                    a.recover_stream()
+                        .map_err(|e| format!("Recovery failed: {}", e))
                 });
 
                 match result {
@@ -391,10 +402,56 @@ impl Application {
         Ok(())
     }
 
+    async fn transcribe_audio(
+        &self,
+        audio_data: &[f32],
+        language: Option<&str>,
+        prompt: Option<&str>,
+        translate: bool,
+    ) -> Result<String> {
+        let backend = self.whisper_backend.clone();
+        let audio_vec = audio_data.to_vec();
+        let language = language.map(str::to_owned);
+        let prompt = prompt.map(str::to_owned);
+
+        let text = tokio::task::spawn_blocking(move || {
+            let mut wb = backend.lock();
+            let b = wb
+                .as_mut()
+                .ok_or_else(|| anyhow::anyhow!("Whisper backend not loaded"))?;
+            b.transcribe_with_options(
+                &audio_vec,
+                language.as_deref(),
+                prompt.as_deref(),
+                translate,
+            )
+        })
+        .await
+        .map_err(|e| WhisperTalkError::Transcription(format!("Join error: {}", e)))??;
+
+        Ok(text)
+    }
+
+    pub async fn transcribe_file(
+        &self,
+        audio_data: Vec<f32>,
+        language: Option<String>,
+        prompt: Option<String>,
+        translate: bool,
+    ) -> Result<String> {
+        self.transcribe_audio(
+            &audio_data,
+            language.as_deref(),
+            prompt.as_deref(),
+            translate,
+        )
+        .await
+    }
+
     fn handle_error(&self, error: anyhow::Error, recovery_event: RecoveryEvent) {
         eprintln!("Error: {}", error);
 
-        if let Some(ref feedback) = self.audio_feedback.lock().as_ref() {
+        if let Some(feedback) = self.audio_feedback.lock().as_ref() {
             let _ = feedback.play_error();
         }
 
@@ -418,7 +475,7 @@ impl Application {
 
         let _ = std::fs::write(&self.paths.recording_status_file, &recording_status);
 
-        let audio_level = if let Some(ref audio) = self.audio_capture.lock().as_ref() {
+        let audio_level = if let Some(audio) = self.audio_capture.lock().as_ref() {
             audio.get_audio_level()
         } else {
             0.0
@@ -431,11 +488,10 @@ impl Application {
         }
     }
 
-
-
     #[allow(dead_code)]
     pub fn get_audio_level(&self) -> f32 {
-        self.audio_capture.lock()
+        self.audio_capture
+            .lock()
             .as_ref()
             .map(|a| a.get_audio_level())
             .unwrap_or(0.0)
@@ -464,18 +520,14 @@ impl OwnedApplication {
 
         let config = self.inner.config.lock().clone();
         let shortcut_str = config.shortcuts.primary_shortcut.clone();
-        let recording_mode = config.shortcuts.recording_mode.clone();
+        let recording_mode = config.shortcuts.recording_mode;
 
         let app_press = self.inner.clone();
         let app_release = self.inner.clone();
 
-        let on_press = {
-            Arc::new(move || app_press.on_shortcut_press())
-        };
+        let on_press = { Arc::new(move || app_press.on_shortcut_press()) };
 
-        let on_release = {
-            Arc::new(move || app_release.on_shortcut_release())
-        };
+        let on_release = { Arc::new(move || app_release.on_shortcut_release()) };
 
         let device_path = None;
         let grab_mode = config.shortcuts.grab_keys;
@@ -504,7 +556,10 @@ impl OwnedApplication {
 
         self.inner.start_monitors()?;
 
-        println!("whisper-talk is running. Press {} to toggle recording", shortcut_str);
+        println!(
+            "whisper-talk is running. Press {} to toggle recording",
+            shortcut_str
+        );
 
         self.inner.write_status_files();
 
@@ -531,6 +586,10 @@ impl OwnedApplication {
         Ok(())
     }
 
+    pub fn api_application(&self) -> Application {
+        self.inner.clone()
+    }
+
     pub async fn run_event_loop(&self) -> Result<()> {
         let mut interval = tokio::time::interval(Duration::from_millis(100));
 
@@ -545,7 +604,7 @@ impl OwnedApplication {
 
 impl Application {
     fn start_monitors(&self) -> Result<()> {
-        use tracing::{info, warn, debug};
+        use tracing::{debug, info, warn};
 
         let config = self.config.lock().clone();
         let device_name = config.audio.device_name.clone();
@@ -560,7 +619,7 @@ impl Application {
             if let Some(ref name) = device_name_clone {
                 if props.matches(name) {
                     info!("Audio device added: {:?}", props);
-                    if let Some(ref feedback) = app.audio_feedback.lock().as_ref() {
+                    if let Some(feedback) = app.audio_feedback.lock().as_ref() {
                         let _ = feedback.play_start();
                     }
                     let tx = app.recovery_tx.lock().clone();
@@ -577,7 +636,7 @@ impl Application {
         let on_remove = move |device: &udev::Device| {
             let props = extract_device_properties(device);
             info!("Audio device removed: {:?}", props);
-            if let Some(ref feedback) = app.audio_feedback.lock().as_ref() {
+            if let Some(feedback) = app.audio_feedback.lock().as_ref() {
                 let _ = feedback.play_error();
             }
         };
@@ -683,7 +742,9 @@ impl Application {
     }
 
     fn on_shortcut_press(&self) {
-        let is_recording = self.audio_capture.lock()
+        let is_recording = self
+            .audio_capture
+            .lock()
             .as_ref()
             .map(|a| a.is_recording())
             .unwrap_or(false);

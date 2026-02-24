@@ -13,7 +13,7 @@ pub enum ResampleError {
     #[error("Input audio data is empty")]
     EmptyAudio,
     #[error("Resampling error: {0}")]
-    ResampleError(String),
+    Other(String),
 }
 
 pub fn resample_to_16khz(
@@ -87,7 +87,7 @@ fn resample_with_rubato(
     };
 
     // Calculate chunk size based on input length
-    let chunk_size = input_data.len().min(1024).max(64);
+    let chunk_size = input_data.len().clamp(64, 1024);
 
     let mut resampler = SincFixedIn::<f32>::new(
         resample_ratio,
@@ -96,7 +96,7 @@ fn resample_with_rubato(
         chunk_size,
         1, // mono channel
     )
-    .map_err(|e| ResampleError::ResampleError(e.to_string()))?;
+    .map_err(|e| ResampleError::Other(e.to_string()))?;
 
     // Process in chunks
     let mut output = Vec::new();
@@ -123,7 +123,7 @@ fn resample_with_rubato(
                     output.extend_from_slice(&waves_out[0]);
                 }
             }
-            Err(e) => return Err(ResampleError::ResampleError(e.to_string())),
+            Err(e) => return Err(ResampleError::Other(e.to_string())),
         }
 
         pos += chunk_size;

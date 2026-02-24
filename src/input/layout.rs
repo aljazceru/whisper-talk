@@ -1,12 +1,13 @@
 #![allow(dead_code)]
-use crate::error::{WhisperTalkError, Result};
+use crate::error::{Result, WhisperTalkError};
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::process::Command;
 
-static LAYOUT_CACHE: Lazy<Mutex<HashMap<String, KeyboardLayout>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static LAYOUT_CACHE: Lazy<Mutex<HashMap<String, KeyboardLayout>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone, Deserialize)]
 struct HyprlandDevice {
@@ -33,7 +34,9 @@ impl KeyboardLayout {
             .output()
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    WhisperTalkError::Input("Hyprland not running or hyprctl not available".to_string())
+                    WhisperTalkError::Input(
+                        "Hyprland not running or hyprctl not available".to_string(),
+                    )
                 } else {
                     WhisperTalkError::Input(format!("Failed to execute hyprctl: {}", e))
                 }
@@ -46,8 +49,9 @@ impl KeyboardLayout {
             )));
         }
 
-        let devices: HyprlandDevices = serde_json::from_slice(&output.stdout)
-            .map_err(|e| WhisperTalkError::Input(format!("Failed to parse hyprctl output: {}", e)))?;
+        let devices: HyprlandDevices = serde_json::from_slice(&output.stdout).map_err(|e| {
+            WhisperTalkError::Input(format!("Failed to parse hyprctl output: {}", e))
+        })?;
 
         let keymap = devices
             .keyboards
@@ -105,7 +109,7 @@ impl KeyboardLayout {
 
     fn parse_keymap(keymap: &str) -> Result<Self> {
         let parts: Vec<&str> = keymap.split(',').collect();
-        let layout = parts.get(0).unwrap_or(&"us").to_string();
+        let layout = parts.first().unwrap_or(&"us").to_string();
         let variant = if parts.len() > 1 && !parts[1].is_empty() {
             Some(parts[1].to_string())
         } else {
@@ -120,10 +124,10 @@ impl KeyboardLayout {
         cmd.args(["compile-keymap", "--format=verbose"]);
 
         if let Some(v) = variant {
-            cmd.arg(&format!("layout({})", layout));
-            cmd.arg(&format!("variant({})", v));
+            cmd.arg(format!("layout({})", layout));
+            cmd.arg(format!("variant({})", v));
         } else {
-            cmd.arg(&format!("layout({})", layout));
+            cmd.arg(format!("layout({})", layout));
         }
 
         let output = cmd.output().map_err(|e| {
@@ -207,7 +211,13 @@ impl KeyboardLayout {
     fn parse_symbol(symbol: &str) -> Option<char> {
         let symbol = symbol.trim();
 
-        if symbol.starts_with('\\') && symbol.len() > 1 {
+        if let Some(code) = symbol
+            .strip_prefix("\\u")
+            .or_else(|| symbol.strip_prefix("\\x"))
+        {
+            let num = u32::from_str_radix(code, 16).ok()?;
+            Some(char::from_u32(num)?)
+        } else if symbol.starts_with('\\') && symbol.len() > 1 {
             let code = &symbol[1..];
             let num = u32::from_str_radix(code, 16).ok()?;
             Some(char::from_u32(num)?)
@@ -323,6 +333,16 @@ mod tests {
 
     #[test]
     fn test_layout_from_hyprland() {
+        let hyprctl_available = std::process::Command::new("hyprctl")
+            .args(["devices", "-j"])
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false);
+
+        if !hyprctl_available {
+            return;
+        }
+
         let result = KeyboardLayout::from_hyprland();
         if std::env::var("WAYLAND_DISPLAY").is_ok() {
             assert!(result.is_ok());
