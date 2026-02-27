@@ -78,6 +78,56 @@ systemctl --user start whisper-talk
 # Press SUPER+ALT+D to start/stop recording
 ```
 
+## OpenAI-Compatible API
+
+Run the daemon with either:
+
+```bash
+whisper-talk daemon --api-bind 127.0.0.1:11434
+```
+
+Or configure it in the config file (see below):
+
+```json
+{
+  "api_bind": "127.0.0.1:11434"
+}
+```
+
+If neither is set, API is disabled and existing local hotkey behavior is unchanged.
+
+The API serves OpenAI-compatible routes under `/v1` (for example `/v1/audio/transcriptions`).
+
+Then request transcription with OpenAI-compatible multipart format:
+
+```bash
+curl -X POST \
+  -F file=@/path/to/audio.wav \
+  -F model=whisper-1 \
+  -F language=en \
+  -F response_format=json \
+  http://127.0.0.1:11434/v1/audio/transcriptions
+```
+
+Response:
+
+```json
+{ "text": "..." }
+```
+
+Supported uploads include WAV by default and common formats like MP3/OGG/FLAC when detected.
+Response format is JSON by default and `text` when `response_format=text`.
+
+Translation requests are also available:
+
+```bash
+curl -X POST \
+  -F file=@/path/to/audio.mp3 \
+  -F model=whisper-1 \
+  -F prompt="Translate the audio to English" \
+  http://127.0.0.1:11434/v1/audio/translations
+```
+
 ## Configuration
 
 Configuration is stored in `~/.config/whisper-talk/config.json`:
@@ -117,7 +167,8 @@ Configuration is stored in `~/.config/whisper-talk/config.json`:
     "start_sound_volume": 1.0,
     "stop_sound_volume": 1.0,
     "error_sound_volume": 1.0
-  }
+  },
+  "api_bind": "127.0.0.1:11434"
 }
 ```
 

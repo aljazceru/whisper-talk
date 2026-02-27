@@ -60,7 +60,10 @@ impl NotificationManager {
                 }
                 Err(e) => {
                     warn!("Failed to send notification: {}", e);
-                    Err(WhisperTalkError::System(format!("Notification failed: {}", e)))
+                    Err(WhisperTalkError::System(format!(
+                        "Notification failed: {}",
+                        e
+                    )))
                 }
             }
         }

@@ -84,7 +84,7 @@ pub fn parse_shortcut(shortcut_str: &str) -> Result<ParsedShortcut, ShortcutPars
 
     for (i, part) in parts.iter().enumerate() {
         let trimmed = part.trim().to_uppercase();
-        
+
         if is_modifier(&trimmed) {
             let modifier = parse_modifier(&trimmed)?;
             modifiers.push(modifier);
@@ -92,7 +92,10 @@ pub fn parse_shortcut(shortcut_str: &str) -> Result<ParsedShortcut, ShortcutPars
             key_part = Some(part.trim());
         } else {
             return Err(ShortcutParseError {
-                message: format!("Invalid part in shortcut: '{}'. Expected modifier or key", part),
+                message: format!(
+                    "Invalid part in shortcut: '{}'. Expected modifier or key",
+                    part
+                ),
             });
         }
     }
@@ -125,11 +128,22 @@ pub fn parse_modifier(mod_str: &str) -> Result<Modifier, ShortcutParseError> {
 pub fn is_modifier(mod_str: &str) -> bool {
     matches!(
         mod_str.trim().to_uppercase().as_str(),
-        "CTRL" | "CONTROL" | "RCTRL" | "RCONTROL"
-            | "ALT" | "RALT"
-            | "SHIFT" | "RSHIFT"
-            | "SUPER" | "META" | "CMD" | "WIN"
-            | "RSUPER" | "RMETA" | "RCMD" | "RWIN"
+        "CTRL"
+            | "CONTROL"
+            | "RCTRL"
+            | "RCONTROL"
+            | "ALT"
+            | "RALT"
+            | "SHIFT"
+            | "RSHIFT"
+            | "SUPER"
+            | "META"
+            | "CMD"
+            | "WIN"
+            | "RSUPER"
+            | "RMETA"
+            | "RCMD"
+            | "RWIN"
     )
 }
 
@@ -142,10 +156,10 @@ pub fn is_right_modifier(mod_str: &str) -> bool {
 
 pub fn parse_key(key_str: &str) -> Result<Key, ShortcutParseError> {
     let key_str = key_str.trim();
-    
+
     if key_str.len() == 1 {
         let c = key_str.chars().next().unwrap();
-        
+
         if c.is_ascii_lowercase() {
             return Ok(Key::Char(c));
         }
@@ -153,7 +167,7 @@ pub fn parse_key(key_str: &str) -> Result<Key, ShortcutParseError> {
         if c.is_ascii_uppercase() {
             return Ok(Key::Char(c.to_ascii_lowercase()));
         }
-        
+
         if c.is_ascii_digit() {
             return Ok(Key::Digit(c.to_digit(10).unwrap() as u8));
         }
@@ -189,7 +203,10 @@ pub fn parse_key(key_str: &str) -> Result<Key, ShortcutParseError> {
         "F11" => Ok(Key::Special(SpecialKey::F11)),
         "F12" => Ok(Key::Special(SpecialKey::F12)),
         _ => Err(ShortcutParseError {
-            message: format!("Unknown key: '{}'. Expected a letter (a-z), digit (0-9), or special key", key_str),
+            message: format!(
+                "Unknown key: '{}'. Expected a letter (a-z), digit (0-9), or special key",
+                key_str
+            ),
         }),
     }
 }
@@ -212,52 +229,48 @@ impl Modifier {
 impl Key {
     pub fn to_evdev_key(self) -> Option<KeyCode> {
         match self {
-            Key::Char(c) => {
-                match c {
-                    'a' => Some(KeyCode::KEY_A),
-                    'b' => Some(KeyCode::KEY_B),
-                    'c' => Some(KeyCode::KEY_C),
-                    'd' => Some(KeyCode::KEY_D),
-                    'e' => Some(KeyCode::KEY_E),
-                    'f' => Some(KeyCode::KEY_F),
-                    'g' => Some(KeyCode::KEY_G),
-                    'h' => Some(KeyCode::KEY_H),
-                    'i' => Some(KeyCode::KEY_I),
-                    'j' => Some(KeyCode::KEY_J),
-                    'k' => Some(KeyCode::KEY_K),
-                    'l' => Some(KeyCode::KEY_L),
-                    'm' => Some(KeyCode::KEY_M),
-                    'n' => Some(KeyCode::KEY_N),
-                    'o' => Some(KeyCode::KEY_O),
-                    'p' => Some(KeyCode::KEY_P),
-                    'q' => Some(KeyCode::KEY_Q),
-                    'r' => Some(KeyCode::KEY_R),
-                    's' => Some(KeyCode::KEY_S),
-                    't' => Some(KeyCode::KEY_T),
-                    'u' => Some(KeyCode::KEY_U),
-                    'v' => Some(KeyCode::KEY_V),
-                    'w' => Some(KeyCode::KEY_W),
-                    'x' => Some(KeyCode::KEY_X),
-                    'y' => Some(KeyCode::KEY_Y),
-                    'z' => Some(KeyCode::KEY_Z),
-                    _ => None,
-                }
-            }
-            Key::Digit(d) => {
-                match d {
-                    0 => Some(KeyCode::KEY_0),
-                    1 => Some(KeyCode::KEY_1),
-                    2 => Some(KeyCode::KEY_2),
-                    3 => Some(KeyCode::KEY_3),
-                    4 => Some(KeyCode::KEY_4),
-                    5 => Some(KeyCode::KEY_5),
-                    6 => Some(KeyCode::KEY_6),
-                    7 => Some(KeyCode::KEY_7),
-                    8 => Some(KeyCode::KEY_8),
-                    9 => Some(KeyCode::KEY_9),
-                    _ => None,
-                }
-            }
+            Key::Char(c) => match c {
+                'a' => Some(KeyCode::KEY_A),
+                'b' => Some(KeyCode::KEY_B),
+                'c' => Some(KeyCode::KEY_C),
+                'd' => Some(KeyCode::KEY_D),
+                'e' => Some(KeyCode::KEY_E),
+                'f' => Some(KeyCode::KEY_F),
+                'g' => Some(KeyCode::KEY_G),
+                'h' => Some(KeyCode::KEY_H),
+                'i' => Some(KeyCode::KEY_I),
+                'j' => Some(KeyCode::KEY_J),
+                'k' => Some(KeyCode::KEY_K),
+                'l' => Some(KeyCode::KEY_L),
+                'm' => Some(KeyCode::KEY_M),
+                'n' => Some(KeyCode::KEY_N),
+                'o' => Some(KeyCode::KEY_O),
+                'p' => Some(KeyCode::KEY_P),
+                'q' => Some(KeyCode::KEY_Q),
+                'r' => Some(KeyCode::KEY_R),
+                's' => Some(KeyCode::KEY_S),
+                't' => Some(KeyCode::KEY_T),
+                'u' => Some(KeyCode::KEY_U),
+                'v' => Some(KeyCode::KEY_V),
+                'w' => Some(KeyCode::KEY_W),
+                'x' => Some(KeyCode::KEY_X),
+                'y' => Some(KeyCode::KEY_Y),
+                'z' => Some(KeyCode::KEY_Z),
+                _ => None,
+            },
+            Key::Digit(d) => match d {
+                0 => Some(KeyCode::KEY_0),
+                1 => Some(KeyCode::KEY_1),
+                2 => Some(KeyCode::KEY_2),
+                3 => Some(KeyCode::KEY_3),
+                4 => Some(KeyCode::KEY_4),
+                5 => Some(KeyCode::KEY_5),
+                6 => Some(KeyCode::KEY_6),
+                7 => Some(KeyCode::KEY_7),
+                8 => Some(KeyCode::KEY_8),
+                9 => Some(KeyCode::KEY_9),
+                _ => None,
+            },
             Key::Special(special) => Some(special.to_evdev_key()),
         }
     }
@@ -299,7 +312,8 @@ impl SpecialKey {
 
 impl ParsedShortcut {
     pub fn matches(&self, pressed_keys: &[KeyCode]) -> bool {
-        let required_modifier_keys: Vec<KeyCode> = self.modifiers.iter().map(|m| m.to_evdev_key()).collect();
+        let required_modifier_keys: Vec<KeyCode> =
+            self.modifiers.iter().map(|m| m.to_evdev_key()).collect();
         let main_key = match self.key.to_evdev_key() {
             Some(k) => k,
             None => return false,
@@ -451,8 +465,14 @@ mod tests {
 
     #[test]
     fn test_key_to_evdev_special() {
-        assert_eq!(Key::Special(SpecialKey::Enter).to_evdev_key(), Some(KeyCode::KEY_ENTER));
-        assert_eq!(Key::Special(SpecialKey::F1).to_evdev_key(), Some(KeyCode::KEY_F1));
+        assert_eq!(
+            Key::Special(SpecialKey::Enter).to_evdev_key(),
+            Some(KeyCode::KEY_ENTER)
+        );
+        assert_eq!(
+            Key::Special(SpecialKey::F1).to_evdev_key(),
+            Some(KeyCode::KEY_F1)
+        );
     }
 
     #[test]

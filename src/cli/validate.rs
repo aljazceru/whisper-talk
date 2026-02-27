@@ -44,13 +44,15 @@ pub fn run_validate(args: ValidateArgs) -> Result<()> {
 
                 // Check if configured model exists
                 let config = manager.get_config();
-                let model_variants = vec![
+                let model_variants = [
                     format!("ggml-{}.bin", config.transcription.model),
                     format!("ggml-{}.en.bin", config.transcription.model),
                 ];
 
                 let model_found = paths.model_search_dirs.iter().any(|dir| {
-                    model_variants.iter().any(|variant| dir.join(variant).exists())
+                    model_variants
+                        .iter()
+                        .any(|variant| dir.join(variant).exists())
                 });
 
                 if !model_found {
@@ -87,10 +89,7 @@ pub fn run_validate(args: ValidateArgs) -> Result<()> {
     }
 
     // Check required binaries
-    let required_binaries = [
-        ("ydotool", "text injection"),
-        ("pactl", "audio monitoring"),
-    ];
+    let required_binaries = [("ydotool", "text injection"), ("pactl", "audio monitoring")];
 
     for (binary, purpose) in &required_binaries {
         let available = Command::new("which")
@@ -130,21 +129,24 @@ pub fn run_validate(args: ValidateArgs) -> Result<()> {
     if let Ok(output) = Command::new("groups").output() {
         let groups = String::from_utf8_lossy(&output.stdout);
         if !groups.contains("input") {
-            warnings.push("User not in 'input' group (may need for keyboard shortcuts)".to_string());
+            warnings
+                .push("User not in 'input' group (may need for keyboard shortcuts)".to_string());
         } else {
             println!("✓ User in 'input' group");
         }
     }
 
     // Check systemd service
-    let service_path = dirs::home_dir()
-        .map(|h| h.join(".config/systemd/user/whisper-talk.service"));
+    let service_path =
+        dirs::home_dir().map(|h| h.join(".config/systemd/user/whisper-talk.service"));
 
     if let Some(path) = service_path {
         if path.exists() {
             println!("✓ Systemd service installed");
         } else {
-            warnings.push("Systemd service not installed (run 'whisper-talk systemd install')".to_string());
+            warnings.push(
+                "Systemd service not installed (run 'whisper-talk systemd install')".to_string(),
+            );
         }
     }
 

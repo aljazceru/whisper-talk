@@ -1,4 +1,4 @@
-use crate::error::{WhisperTalkError, Result};
+use crate::error::{Result, WhisperTalkError};
 use crate::types::RecordingMode;
 use evdev::{Device, KeyCode};
 use parking_lot::Mutex;
@@ -89,7 +89,9 @@ impl GlobalShortcuts {
             if path_str.contains("event") {
                 match Device::open(&entry_path) {
                     Ok(dev) => {
-                        let key_count = dev.supported_keys().map_or(0, |keys| keys.into_iter().count());
+                        let key_count = dev
+                            .supported_keys()
+                            .map_or(0, |keys| keys.into_iter().count());
                         let name = dev.name().unwrap_or("Unknown").to_string();
                         let name_lower = name.to_lowercase();
 
@@ -98,9 +100,17 @@ impl GlobalShortcuts {
                             || name_lower.contains("virtual")
                             || name_lower.contains("uinput");
 
-                        eprintln!("  {}: {} ({} keys){}",
-                            entry_path.display(), name, key_count,
-                            if is_virtual { " [virtual, skipped]" } else { "" });
+                        eprintln!(
+                            "  {}: {} ({} keys){}",
+                            entry_path.display(),
+                            name,
+                            key_count,
+                            if is_virtual {
+                                " [virtual, skipped]"
+                            } else {
+                                ""
+                            }
+                        );
 
                         if key_count > 50 && !is_virtual {
                             // Prefer devices with "keyboard" in the name
@@ -116,27 +126,35 @@ impl GlobalShortcuts {
         }
 
         // Sort: keyboards first, then by key count descending
-        candidates.sort_by(|a, b| {
-            match (a.3, b.3) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => b.2.cmp(&a.2),
-            }
+        candidates.sort_by(|a, b| match (a.3, b.3) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => b.2.cmp(&a.2),
         });
 
         if let Some((path, name, key_count, _)) = candidates.first() {
-            println!("Using keyboard device: {} ({}, {} keys)", path.display(), name, key_count);
+            println!(
+                "Using keyboard device: {} ({}, {} keys)",
+                path.display(),
+                name,
+                key_count
+            );
             return Ok(Some(Device::open(path)?));
         }
 
-        eprintln!("No suitable keyboard device found in {} candidates", candidates.len());
+        eprintln!(
+            "No suitable keyboard device found in {} candidates",
+            candidates.len()
+        );
         Ok(None)
     }
 
     fn parse_shortcut(shortcut_str: &str) -> Result<Shortcut> {
         let parts: Vec<&str> = shortcut_str.split('+').collect();
         if parts.is_empty() {
-            return Err(WhisperTalkError::Input("Invalid shortcut format".to_string()));
+            return Err(WhisperTalkError::Input(
+                "Invalid shortcut format".to_string(),
+            ));
         }
 
         let mut modifiers = Vec::new();
@@ -146,7 +164,12 @@ impl GlobalShortcuts {
                 "ALT" | "LALT" => KeyCode::KEY_LEFTALT,
                 "SHIFT" | "LSHIFT" => KeyCode::KEY_LEFTSHIFT,
                 "SUPER" | "META" | "LSUPER" => KeyCode::KEY_LEFTMETA,
-                _ => return Err(WhisperTalkError::Input(format!("Unknown modifier: {}", part))),
+                _ => {
+                    return Err(WhisperTalkError::Input(format!(
+                        "Unknown modifier: {}",
+                        part
+                    )))
+                }
             };
             modifiers.push(modifier);
         }
@@ -161,7 +184,10 @@ impl GlobalShortcuts {
                 if key_part.len() == 1 {
                     Self::char_to_key(key_part.chars().next().unwrap())?
                 } else {
-                    return Err(WhisperTalkError::Input(format!("Unknown key: {}", key_part)));
+                    return Err(WhisperTalkError::Input(format!(
+                        "Unknown key: {}",
+                        key_part
+                    )));
                 }
             }
         };
@@ -207,7 +233,10 @@ impl GlobalShortcuts {
             '7' => Ok(KeyCode::KEY_7),
             '8' => Ok(KeyCode::KEY_8),
             '9' => Ok(KeyCode::KEY_9),
-            _ => Err(WhisperTalkError::Input(format!("Unsupported character: {}", c))),
+            _ => Err(WhisperTalkError::Input(format!(
+                "Unsupported character: {}",
+                c
+            ))),
         }
     }
 
@@ -219,7 +248,10 @@ impl GlobalShortcuts {
         *is_running = true;
         drop(is_running);
 
-        let device = self.device.clone().ok_or(WhisperTalkError::Input("No device".to_string()))?;
+        let device = self
+            .device
+            .clone()
+            .ok_or(WhisperTalkError::Input("No device".to_string()))?;
         let shortcut = self.shortcut.clone();
         let on_press = self.on_press.clone();
         let on_release = self.on_release.clone();
@@ -243,12 +275,17 @@ impl GlobalShortcuts {
                                     1 => {
                                         // Debug: show key presses
                                         if std::env::var("GWHSPR_DEBUG").is_ok() {
-                                            eprintln!("Key down: {:?}, modifiers: {:?}", key_code, modifier_states);
+                                            eprintln!(
+                                                "Key down: {:?}, modifiers: {:?}",
+                                                key_code, modifier_states
+                                            );
                                         }
-                                        if shortcut.modifiers.iter().any(|&k| k == key_code) {
+                                        if shortcut.modifiers.contains(&key_code) {
                                             modifier_states.push(key_code);
                                         } else if key_code == shortcut.key {
-                                            let all_modifiers = shortcut.modifiers.iter()
+                                            let all_modifiers = shortcut
+                                                .modifiers
+                                                .iter()
                                                 .all(|m| modifier_states.contains(m));
 
                                             if all_modifiers {
@@ -269,8 +306,13 @@ impl GlobalShortcuts {
                                                         *release_count.lock() = 0;
                                                     }
                                                     RecordingMode::Auto => {
-                                                        let elapsed = press_time.lock().as_ref().map(|t| t.elapsed());
-                                                        if elapsed.map_or(false, |e| e >= Duration::from_millis(400)) {
+                                                        let elapsed = press_time
+                                                            .lock()
+                                                            .as_ref()
+                                                            .map(|t| t.elapsed());
+                                                        if elapsed.is_some_and(|e| {
+                                                            e >= Duration::from_millis(400)
+                                                        }) {
                                                             on_press();
                                                             modifier_states.clear();
                                                             *release_count.lock() = 0;
@@ -289,7 +331,7 @@ impl GlobalShortcuts {
                                         }
                                     }
                                     0 => {
-                                        if shortcut.modifiers.iter().any(|&k| k == key_code) {
+                                        if shortcut.modifiers.contains(&key_code) {
                                             modifier_states.retain(|&k| k != key_code);
                                         } else if key_code == shortcut.key {
                                             on_release();

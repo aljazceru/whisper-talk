@@ -53,21 +53,19 @@ impl DeviceMonitor {
             .spawn(move || {
                 // Build the monitor using MonitorBuilder
                 let socket = match udev::MonitorBuilder::new() {
-                    Ok(builder) => {
-                        match builder.match_subsystem("sound") {
-                            Ok(b) => match b.listen() {
-                                Ok(s) => s,
-                                Err(e) => {
-                                    eprintln!("Failed to listen to udev socket: {}", e);
-                                    return;
-                                }
-                            },
+                    Ok(builder) => match builder.match_subsystem("sound") {
+                        Ok(b) => match b.listen() {
+                            Ok(s) => s,
                             Err(e) => {
-                                eprintln!("Failed to match sound subsystem: {}", e);
+                                eprintln!("Failed to listen to udev socket: {}", e);
                                 return;
                             }
+                        },
+                        Err(e) => {
+                            eprintln!("Failed to match sound subsystem: {}", e);
+                            return;
                         }
-                    }
+                    },
                     Err(e) => {
                         eprintln!("Failed to create udev monitor builder: {}", e);
                         return;

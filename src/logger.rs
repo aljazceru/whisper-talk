@@ -30,8 +30,8 @@ pub fn init_logging(
         tracing::Level::WARN
     };
 
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(level.to_string()));
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level.to_string()));
 
     let console_layer = fmt::layer()
         .with_writer(std::io::stderr)
@@ -58,9 +58,7 @@ pub fn init_logging(
             .with_file(true)
             .with_line_number(true);
 
-        subscriber
-            .with(file_layer)
-            .try_init()?;
+        subscriber.with(file_layer).try_init()?;
     } else {
         subscriber.try_init()?;
     }

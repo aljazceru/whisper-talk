@@ -1,4 +1,4 @@
-use crate::error::{WhisperTalkError, Result};
+use crate::error::{Result, WhisperTalkError};
 use crate::types::PasteMode;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -73,12 +73,14 @@ impl TextInjector {
 
     fn is_kitty_terminal(&self) -> Result<bool> {
         match Command::new("hyprctl")
-            .args(&["activewindow", "-j"])
+            .args(["activewindow", "-j"])
             .output()
         {
             Ok(output) => {
                 if output.status.success() {
-                    if let Ok(window_info) = serde_json::from_slice::<HyprWindowInfo>(&output.stdout) {
+                    if let Ok(window_info) =
+                        serde_json::from_slice::<HyprWindowInfo>(&output.stdout)
+                    {
                         if let Some(class) = window_info.class {
                             let class_lower = class.to_lowercase();
                             return Ok(class_lower.contains("kitty")
@@ -95,12 +97,12 @@ impl TextInjector {
     }
 
     fn clear_modifiers(&self) -> Result<()> {
-        let modifiers = vec!["125:0", "126:0", "56:0", "100:0", "29:0", "97:0", "42:0", "54:0"];
+        let modifiers = vec![
+            "125:0", "126:0", "56:0", "100:0", "29:0", "97:0", "42:0", "54:0",
+        ];
 
         for modifier in &modifiers {
-            let _ = Command::new("ydotool")
-                .args(&["key", modifier])
-                .output();
+            let _ = Command::new("ydotool").args(["key", modifier]).output();
             thread::sleep(Duration::from_millis(5));
         }
 
@@ -111,51 +113,63 @@ impl TextInjector {
         match self.paste_mode {
             PasteMode::CtrlShift => {
                 Command::new("ydotool")
-                    .args(&["key", "29:1", "42:1"])
+                    .args(["key", "29:1", "42:1"])
                     .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to send Ctrl+Shift: {}", e)))?;
+                    .map_err(|e| {
+                        WhisperTalkError::Injection(format!("Failed to send Ctrl+Shift: {}", e))
+                    })?;
                 thread::sleep(Duration::from_millis(15));
                 Command::new("ydotool")
-                    .args(&["key", "47:1", "47:0"])
+                    .args(["key", "47:1", "47:0"])
                     .spawn()
                     .map_err(|e| WhisperTalkError::Injection(format!("Failed to send V: {}", e)))?;
                 thread::sleep(Duration::from_millis(10));
                 Command::new("ydotool")
-                    .args(&["key", "42:0", "29:0"])
+                    .args(["key", "42:0", "29:0"])
                     .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to release Ctrl+Shift: {}", e)))?;
+                    .map_err(|e| {
+                        WhisperTalkError::Injection(format!("Failed to release Ctrl+Shift: {}", e))
+                    })?;
             }
             PasteMode::Ctrl => {
                 Command::new("ydotool")
-                    .args(&["key", "29:1"])
+                    .args(["key", "29:1"])
                     .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to send Ctrl: {}", e)))?;
+                    .map_err(|e| {
+                        WhisperTalkError::Injection(format!("Failed to send Ctrl: {}", e))
+                    })?;
                 thread::sleep(Duration::from_millis(15));
                 Command::new("ydotool")
-                    .args(&["key", "47:1", "47:0"])
+                    .args(["key", "47:1", "47:0"])
                     .spawn()
                     .map_err(|e| WhisperTalkError::Injection(format!("Failed to send V: {}", e)))?;
                 thread::sleep(Duration::from_millis(10));
                 Command::new("ydotool")
-                    .args(&["key", "29:0"])
+                    .args(["key", "29:0"])
                     .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to release Ctrl: {}", e)))?;
+                    .map_err(|e| {
+                        WhisperTalkError::Injection(format!("Failed to release Ctrl: {}", e))
+                    })?;
             }
             PasteMode::Super => {
                 Command::new("ydotool")
-                    .args(&["key", "125:1"])
+                    .args(["key", "125:1"])
                     .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to send Super: {}", e)))?;
+                    .map_err(|e| {
+                        WhisperTalkError::Injection(format!("Failed to send Super: {}", e))
+                    })?;
                 thread::sleep(Duration::from_millis(15));
                 Command::new("ydotool")
-                    .args(&["key", "47:1", "47:0"])
+                    .args(["key", "47:1", "47:0"])
                     .spawn()
                     .map_err(|e| WhisperTalkError::Injection(format!("Failed to send V: {}", e)))?;
                 thread::sleep(Duration::from_millis(10));
                 Command::new("ydotool")
-                    .args(&["key", "125:0"])
+                    .args(["key", "125:0"])
                     .spawn()
-                    .map_err(|e| WhisperTalkError::Injection(format!("Failed to release Super: {}", e)))?;
+                    .map_err(|e| {
+                        WhisperTalkError::Injection(format!("Failed to release Super: {}", e))
+                    })?;
             }
         }
 
@@ -170,17 +184,19 @@ impl TextInjector {
         };
 
         Command::new("ydotool")
-            .args(&["key"])
+            .args(["key"])
             .args(&keys)
             .spawn()
-            .map_err(|e| WhisperTalkError::Injection(format!("Failed to send paste keys: {}", e)))?;
+            .map_err(|e| {
+                WhisperTalkError::Injection(format!("Failed to send paste keys: {}", e))
+            })?;
 
         Ok(())
     }
 
     fn send_enter_key(&self) -> Result<()> {
         Command::new("ydotool")
-            .args(&["key", "28:1", "28:0"])
+            .args(["key", "28:1", "28:0"])
             .spawn()
             .map_err(|e| WhisperTalkError::Injection(format!("Failed to send Enter: {}", e)))?;
         Ok(())
@@ -222,8 +238,9 @@ impl TextInjector {
             .map_err(|e| WhisperTalkError::Injection(format!("Failed to spawn wl-copy: {}", e)))?;
 
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(text.as_bytes())
-                .map_err(|e| WhisperTalkError::Injection(format!("Failed to write to wl-copy stdin: {}", e)))?;
+            stdin.write_all(text.as_bytes()).map_err(|e| {
+                WhisperTalkError::Injection(format!("Failed to write to wl-copy stdin: {}", e))
+            })?;
             // stdin is dropped here, signaling EOF to wl-copy
         }
 

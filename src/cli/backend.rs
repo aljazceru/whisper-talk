@@ -133,15 +133,15 @@ fn run_backend_reset(paths: &Paths) -> Result<()> {
     if paths.lock_file.exists() {
         // Try to acquire the lock to check if daemon is running
         let can_lock = std::fs::File::create(&paths.lock_file)
-            .and_then(|file| {
+            .map(|file| {
                 use std::os::unix::io::AsRawFd;
                 let fd = file.as_raw_fd();
                 let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
                 if result == 0 {
                     unsafe { libc::flock(fd, libc::LOCK_UN) };
-                    Ok(true)
+                    true
                 } else {
-                    Ok(false)
+                    false
                 }
             })
             .unwrap_or(false);
@@ -161,7 +161,9 @@ fn run_backend_reset(paths: &Paths) -> Result<()> {
         println!("\nNo state files to clear.");
     }
 
-    println!("\nNote: Models are preserved. Use 'whisper-talk model status' to see downloaded models.");
+    println!(
+        "\nNote: Models are preserved. Use 'whisper-talk model status' to see downloaded models."
+    );
 
     Ok(())
 }

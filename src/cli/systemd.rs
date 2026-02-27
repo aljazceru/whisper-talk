@@ -66,18 +66,16 @@ pub fn run_systemd(args: SystemdArgs) -> Result<()> {
 
 fn install_service() -> Result<()> {
     let systemd_dir = get_systemd_user_dir()?;
-    
-    fs::create_dir_all(&systemd_dir)
-        .context("Failed to create systemd user directory")?;
+
+    fs::create_dir_all(&systemd_dir).context("Failed to create systemd user directory")?;
 
     let template_path = get_service_template_path()?;
     let service_content = fs::read_to_string(&template_path)
         .with_context(|| format!("Failed to read service template from {:?}", template_path))?;
 
-    let exe_path = std::env::current_exe()
-        .context("Failed to get executable path")?;
+    let exe_path = std::env::current_exe().context("Failed to get executable path")?;
     let exe_str = exe_path.to_string_lossy().to_string();
-    
+
     let service_content = service_content.replace(LOCAL_BIN, &exe_str);
 
     let service_path = systemd_dir.join(SERVICE_NAME);
@@ -85,7 +83,7 @@ fn install_service() -> Result<()> {
         .with_context(|| format!("Failed to write service file to {:?}", service_path))?;
 
     println!("Service file installed to {:?}", service_path);
-    
+
     run_systemctl(&["daemon-reload"])?;
     println!("Systemd daemon reloaded");
 

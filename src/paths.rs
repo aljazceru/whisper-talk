@@ -21,15 +21,16 @@ pub struct Paths {
 
 impl Paths {
     pub fn new() -> anyhow::Result<Self> {
-        let proj_dirs = directories::ProjectDirs::from("com.github.aljazceru", "aljazceru", "whisper-talk")
-            .ok_or_else(|| anyhow::anyhow!("Failed to get project directories"))?;
+        let proj_dirs =
+            directories::ProjectDirs::from("com.github.aljazceru", "aljazceru", "whisper-talk")
+                .ok_or_else(|| anyhow::anyhow!("Failed to get project directories"))?;
 
-        let home = dirs::home_dir()
-            .ok_or_else(|| anyhow::anyhow!("Home directory not found"))?;
+        let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Home directory not found"))?;
 
         let config_dir = proj_dirs.config_dir().to_path_buf();
         let data_dir = proj_dirs.data_dir().to_path_buf();
-        let state_dir = proj_dirs.state_dir()
+        let state_dir = proj_dirs
+            .state_dir()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| data_dir.join("state"));
         let cache_dir = proj_dirs.cache_dir().to_path_buf();

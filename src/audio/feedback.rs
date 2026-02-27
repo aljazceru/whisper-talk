@@ -1,4 +1,4 @@
-use crate::error::{WhisperTalkError, Result};
+use crate::error::{Result, WhisperTalkError};
 use crate::paths::Paths;
 use crate::types::FeedbackConfig;
 use parking_lot::Mutex;
@@ -23,8 +23,9 @@ unsafe impl Sync for AudioFeedback {}
 
 impl AudioFeedback {
     pub fn new(feedback_config: &FeedbackConfig, paths: &Paths) -> Result<Self> {
-        let (stream, stream_handle) = OutputStream::try_default()
-            .map_err(|e| WhisperTalkError::Audio(format!("Failed to create output stream: {}", e)))?;
+        let (stream, stream_handle) = OutputStream::try_default().map_err(|e| {
+            WhisperTalkError::Audio(format!("Failed to create output stream: {}", e))
+        })?;
 
         Ok(Self {
             config: Arc::new(Mutex::new(feedback_config.clone())),

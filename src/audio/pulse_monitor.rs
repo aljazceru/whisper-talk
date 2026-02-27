@@ -58,14 +58,9 @@ impl PulseMonitor {
     /// Get the current default source name
     pub fn get_default_source_name(&self) -> Option<String> {
         // Try to get from pactl
-        match Command::new("pactl")
-            .args(["get-default-source"])
-            .output()
-        {
+        match Command::new("pactl").args(["get-default-source"]).output() {
             Ok(output) if output.status.success() => {
-                let name = String::from_utf8_lossy(&output.stdout)
-                    .trim()
-                    .to_string();
+                let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !name.is_empty() {
                     Some(name)
                 } else {
@@ -110,10 +105,16 @@ impl PulseMonitor {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
-            .map_err(|e| crate::error::WhisperTalkError::Audio(format!("Failed to start pactl subscribe: {}", e)))?;
+            .map_err(|e| {
+                crate::error::WhisperTalkError::Audio(format!(
+                    "Failed to start pactl subscribe: {}",
+                    e
+                ))
+            })?;
 
-        let stdout = child.stdout.take()
-            .ok_or_else(|| crate::error::WhisperTalkError::Audio("Failed to get pactl stdout".to_string()))?;
+        let stdout = child.stdout.take().ok_or_else(|| {
+            crate::error::WhisperTalkError::Audio("Failed to get pactl stdout".to_string())
+        })?;
 
         self.pactl_process = Some(child);
         self.running.store(true, Ordering::SeqCst);

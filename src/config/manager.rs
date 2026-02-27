@@ -1,4 +1,4 @@
-use crate::error::{WhisperTalkError, Result};
+use crate::error::{Result, WhisperTalkError};
 use crate::paths::Paths;
 use crate::types::Config;
 use std::fs;
@@ -42,8 +42,9 @@ impl ConfigManager {
         let content = serde_json::to_string_pretty(&self.config)
             .map_err(|e| WhisperTalkError::Config(format!("Failed to serialize config: {}", e)))?;
 
-        let mut file = fs::File::create(&self.paths.config_file)
-            .map_err(|e| WhisperTalkError::Config(format!("Failed to create config file: {}", e)))?;
+        let mut file = fs::File::create(&self.paths.config_file).map_err(|e| {
+            WhisperTalkError::Config(format!("Failed to create config file: {}", e))
+        })?;
 
         file.write_all(content.as_bytes())
             .map_err(|e| WhisperTalkError::Config(format!("Failed to write config file: {}", e)))?;
@@ -72,15 +73,21 @@ impl ConfigManager {
 
     pub fn validate(&self) -> Result<()> {
         if self.config.shortcuts.primary_shortcut.is_empty() {
-            return Err(WhisperTalkError::InvalidConfig("Shortcut cannot be empty".to_string()));
+            return Err(WhisperTalkError::InvalidConfig(
+                "Shortcut cannot be empty".to_string(),
+            ));
         }
 
         if self.config.transcription.model.is_empty() {
-            return Err(WhisperTalkError::InvalidConfig("Model cannot be empty".to_string()));
+            return Err(WhisperTalkError::InvalidConfig(
+                "Model cannot be empty".to_string(),
+            ));
         }
 
         if self.config.transcription.threads == 0 {
-            return Err(WhisperTalkError::InvalidConfig("Threads must be > 0".to_string()));
+            return Err(WhisperTalkError::InvalidConfig(
+                "Threads must be > 0".to_string(),
+            ));
         }
 
         Ok(())

@@ -3,43 +3,31 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum RecordingMode {
+    #[default]
     Toggle,
     PushToTalk,
     Auto,
 }
 
-impl Default for RecordingMode {
-    fn default() -> Self {
-        Self::Toggle
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PasteMode {
+    #[default]
     CtrlShift,
     Ctrl,
     Super,
 }
 
-impl Default for PasteMode {
-    fn default() -> Self {
-        Self::CtrlShift
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum TranscriptionBackend {
+    #[default]
     Whisper,
     ParakeetV3,
-}
-
-impl Default for TranscriptionBackend {
-    fn default() -> Self {
-        Self::Whisper
-    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
@@ -166,8 +154,11 @@ pub struct FeedbackConfig {
     pub error_sound_path: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Default)]
 pub struct Config {
+    #[serde(default)]
+    pub api_bind: Option<std::net::SocketAddr>,
+
     #[serde(default)]
     pub shortcuts: ShortcutConfig,
 
@@ -182,18 +173,6 @@ pub struct Config {
 
     #[serde(default)]
     pub feedback: FeedbackConfig,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            shortcuts: ShortcutConfig::default(),
-            audio: AudioConfig::default(),
-            transcription: TranscriptionConfig::default(),
-            injection: InjectionConfig::default(),
-            feedback: FeedbackConfig::default(),
-        }
-    }
 }
 
 fn default_primary_shortcut() -> String {

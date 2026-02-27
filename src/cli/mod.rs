@@ -1,30 +1,31 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
-pub use setup::{run_setup, SetupArgs};
-pub use config::{run_config, ConfigArgs};
-pub use waybar::{run_waybar, WaybarArgs};
-pub use mic_osd::{run_mic_osd, MicOsdArgs};
-pub use systemd::{run_systemd, SystemdArgs};
-pub use model::{run_model, ModelArgs};
 pub use backend::{run_backend, BackendArgs};
+pub use config::{run_config, ConfigArgs};
+pub use mic_osd::{run_mic_osd, MicOsdArgs};
+pub use model::{run_model, ModelArgs};
+pub use setup::{run_setup, SetupArgs};
 pub use state::{run_state, StateArgs};
 pub use status::{run_status, StatusArgs};
-pub use validate::{run_validate, ValidateArgs};
+pub use systemd::{run_systemd, SystemdArgs};
 pub use uninstall::{run_uninstall, UninstallArgs};
+pub use validate::{run_validate, ValidateArgs};
+pub use waybar::{run_waybar, WaybarArgs};
 
-mod setup;
-mod config;
-mod waybar;
-mod mic_osd;
-mod systemd;
-mod model;
 mod backend;
+mod config;
+mod mic_osd;
+mod model;
+mod setup;
 mod state;
 mod status;
-mod validate;
+mod systemd;
 mod uninstall;
+mod validate;
+mod waybar;
 
 #[derive(Parser, Debug)]
 #[command(name = "whisper-talk")]
@@ -51,7 +52,7 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    Daemon,
+    Daemon(DaemonArgs),
     Setup(SetupArgs),
     Config(ConfigArgs),
     Waybar(WaybarArgs),
@@ -65,12 +66,20 @@ pub enum Commands {
     Uninstall(UninstallArgs),
 }
 
+#[derive(clap::Args, Debug)]
+pub struct DaemonArgs {
+    #[arg(
+        long,
+        value_name = "ADDRESS",
+        value_parser = clap::value_parser!(SocketAddr),
+        help = "Address to bind the OpenAI-compatible transcription API (or set `api_bind` in config)"
+    )]
+    pub api_bind: Option<SocketAddr>,
+}
+
 pub fn run_cli(cli: Cli) -> Result<()> {
     match cli.command {
-        Commands::Daemon => {
-            println!("Daemon - not implemented yet");
-            Ok(())
-        }
+        Commands::Daemon(_) => unreachable!("daemon command is handled in main"),
         Commands::Setup(args) => run_setup(args),
         Commands::Config(args) => run_config(args),
         Commands::Waybar(args) => run_waybar(args),

@@ -48,7 +48,7 @@ fn run_state_show(paths: &Paths) -> Result<()> {
         (&paths.lock_file, "Lock File"),
     ];
 
-    println!("{:<25} {:<15} {}", "FILE", "STATUS", "CONTENT");
+    println!("{:<25} {:<15} CONTENT", "FILE", "STATUS");
     println!("{}", "-".repeat(60));
 
     for (path, name) in &state_files {
@@ -77,15 +77,15 @@ fn run_state_show(paths: &Paths) -> Result<()> {
     println!();
     if paths.lock_file.exists() {
         let lock_held = std::fs::File::open(&paths.lock_file)
-            .and_then(|file| {
+            .map(|file| {
                 use std::os::unix::io::AsRawFd;
                 let fd = file.as_raw_fd();
                 let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
                 if result == 0 {
                     unsafe { libc::flock(fd, libc::LOCK_UN) };
-                    Ok(false)
+                    false
                 } else {
-                    Ok(true)
+                    true
                 }
             })
             .unwrap_or(false);
@@ -109,7 +109,10 @@ fn run_state_validate(paths: &Paths) -> Result<()> {
 
     // Check state directory
     if !paths.state_dir.exists() {
-        issues.push(format!("State directory missing: {}", paths.state_dir.display()));
+        issues.push(format!(
+            "State directory missing: {}",
+            paths.state_dir.display()
+        ));
     }
 
     // Check recording status file format
@@ -138,15 +141,15 @@ fn run_state_validate(paths: &Paths) -> Result<()> {
     // Check for stale lock
     if paths.lock_file.exists() {
         let lock_held = std::fs::File::open(&paths.lock_file)
-            .and_then(|file| {
+            .map(|file| {
                 use std::os::unix::io::AsRawFd;
                 let fd = file.as_raw_fd();
                 let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
                 if result == 0 {
                     unsafe { libc::flock(fd, libc::LOCK_UN) };
-                    Ok(false)
+                    false
                 } else {
-                    Ok(true)
+                    true
                 }
             })
             .unwrap_or(false);
@@ -194,15 +197,15 @@ fn run_state_reset(all: bool, paths: &Paths) -> Result<()> {
     // Only clear lock if --all and daemon is not running
     if all && paths.lock_file.exists() {
         let can_remove = std::fs::File::open(&paths.lock_file)
-            .and_then(|file| {
+            .map(|file| {
                 use std::os::unix::io::AsRawFd;
                 let fd = file.as_raw_fd();
                 let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
                 if result == 0 {
                     unsafe { libc::flock(fd, libc::LOCK_UN) };
-                    Ok(true)
+                    true
                 } else {
-                    Ok(false)
+                    false
                 }
             })
             .unwrap_or(true);
@@ -212,7 +215,10 @@ fn run_state_reset(all: bool, paths: &Paths) -> Result<()> {
             println!("  Cleared: {} (lock file)", paths.lock_file.display());
             cleared += 1;
         } else {
-            println!("  Skipped: {} (daemon is running)", paths.lock_file.display());
+            println!(
+                "  Skipped: {} (daemon is running)",
+                paths.lock_file.display()
+            );
         }
     }
 

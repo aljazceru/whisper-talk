@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Args, Subcommand};
+use std::net::SocketAddr;
 use std::process::Command;
 
 use crate::config::ConfigManager;
@@ -155,6 +156,9 @@ fn run_config_show(format: &str, paths: &Paths) -> Result<()> {
             println!("  Mic OSD enabled: {}", config.feedback.mic_osd_enabled);
             println!("  Audio feedback: {}", config.feedback.audio_feedback);
             println!("  Master volume: {}", config.feedback.master_volume);
+            println!();
+            println!("=== API ===");
+            println!("  Bind address: {:?}", config.api_bind);
         }
         _ => {
             println!("Unsupported format '{}', using pretty output", format);
@@ -206,6 +210,9 @@ fn run_config_show(format: &str, paths: &Paths) -> Result<()> {
             println!("  Mic OSD enabled: {}", config.feedback.mic_osd_enabled);
             println!("  Audio feedback: {}", config.feedback.audio_feedback);
             println!("  Master volume: {}", config.feedback.master_volume);
+            println!();
+            println!("=== API ===");
+            println!("  Bind address: {:?}", config.api_bind);
         }
     }
 
@@ -323,6 +330,7 @@ fn get_config_value(config: &crate::types::Config, key: &str) -> Result<String> 
         ["feedback", "mic_osd_enabled"] => Ok(config.feedback.mic_osd_enabled.to_string()),
         ["feedback", "audio_feedback"] => Ok(config.feedback.audio_feedback.to_string()),
         ["feedback", "master_volume"] => Ok(config.feedback.master_volume.to_string()),
+        ["api_bind"] => Ok(format!("{:?}", config.api_bind)),
 
         _ => anyhow::bail!("Unknown config key: {}", key),
     }
@@ -405,6 +413,12 @@ fn set_config_value(config: &mut crate::types::Config, key: &str, value: &str) -
         }
         ["feedback", "master_volume"] => {
             config.feedback.master_volume = value.parse()?;
+        }
+        ["api_bind"] => {
+            config.api_bind = match value.to_lowercase().as_str() {
+                "null" | "" => None,
+                raw => Some(raw.parse::<SocketAddr>()?),
+            };
         }
 
         _ => anyhow::bail!("Unknown or read-only config key: {}", key),

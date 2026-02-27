@@ -63,13 +63,10 @@ pub fn run_model(args: ModelArgs) -> Result<()> {
 
 fn run_model_download(name: &str, force: bool, paths: &Paths) -> Result<()> {
     // Find model info
-    let model_info = MODELS
-        .iter()
-        .find(|(n, _, _)| *n == name)
-        .or_else(|| {
-            // Try exact filename match
-            MODELS.iter().find(|(_, f, _)| f.contains(name))
-        });
+    let model_info = MODELS.iter().find(|(n, _, _)| *n == name).or_else(|| {
+        // Try exact filename match
+        MODELS.iter().find(|(_, f, _)| f.contains(name))
+    });
 
     let (model_name, filename, size) = match model_info {
         Some(info) => *info,
@@ -87,7 +84,11 @@ fn run_model_download(name: &str, force: bool, paths: &Paths) -> Result<()> {
     let existing_path = find_existing_model(paths, filename);
     if let Some(path) = &existing_path {
         if !force {
-            println!("Model '{}' already exists at: {}", model_name, path.display());
+            println!(
+                "Model '{}' already exists at: {}",
+                model_name,
+                path.display()
+            );
             println!("Use --force to re-download");
             return Ok(());
         } else {
@@ -107,14 +108,17 @@ fn run_model_download(name: &str, force: bool, paths: &Paths) -> Result<()> {
     download_with_progress(&url, &target_path)?;
 
     println!("\nModel '{}' downloaded successfully!", model_name);
-    println!("You can now use it with: whisper-talk config set transcription.model {}", model_name);
+    println!(
+        "You can now use it with: whisper-talk config set transcription.model {}",
+        model_name
+    );
 
     Ok(())
 }
 
 fn run_model_list() -> Result<()> {
     println!("Available Whisper models:\n");
-    println!("{:<18} {:<30} {}", "NAME", "FILENAME", "SIZE");
+    println!("{:<18} {:<30} SIZE", "NAME", "FILENAME");
     println!("{}", "-".repeat(60));
 
     for (name, filename, size) in MODELS {
@@ -180,7 +184,7 @@ fn run_model_status(paths: &Paths) -> Result<()> {
         println!("Run 'whisper-talk model list' to see available models.");
     } else {
         println!("Downloaded models:\n");
-        println!("{:<20} {:<10} {}", "MODEL", "SIZE", "PATH");
+        println!("{:<20} {:<10} PATH", "MODEL", "SIZE");
         println!("{}", "-".repeat(70));
 
         for (name, path, size) in found_models {
@@ -229,7 +233,8 @@ fn download_with_progress(url: &str, target_path: &PathBuf) -> Result<()> {
         }
     }
 
-    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Download failed after {} attempts", MAX_RETRIES)))
+    Err(last_error
+        .unwrap_or_else(|| anyhow::anyhow!("Download failed after {} attempts", MAX_RETRIES)))
 }
 
 fn try_download(
@@ -254,8 +259,9 @@ fn try_download(
         pb
     } else {
         let pb = ProgressBar::new_spinner();
-        pb.set_style(ProgressStyle::default_spinner()
-            .template("{spinner:.green} {bytes} downloaded")?);
+        pb.set_style(
+            ProgressStyle::default_spinner().template("{spinner:.green} {bytes} downloaded")?,
+        );
         pb
     };
 

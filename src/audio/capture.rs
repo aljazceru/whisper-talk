@@ -1,11 +1,8 @@
-use crate::error::{WhisperTalkError, Result};
+use crate::error::{Result, WhisperTalkError};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Sample, SampleFormat, StreamConfig};
 use parking_lot::Mutex;
-use rubato::{
-    SincFixedIn, SincInterpolationParameters,
-    SincInterpolationType, WindowFunction,
-};
+use rubato::{SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -78,7 +75,7 @@ impl AudioCapture {
         for (index, device) in devices_iter.enumerate() {
             if let Ok(name) = device.description() {
                 if let Ok(default_config) = device.default_input_config() {
-                    let default_sr: u32 = default_config.sample_rate().into();
+                    let default_sr: u32 = default_config.sample_rate();
                     devices.push(DeviceInfo {
                         name: name.to_string(),
                         id: Some(index as u32),
@@ -123,7 +120,10 @@ impl AudioCapture {
 
         // Resample if necessary
         if self.sample_rate != self.target_sample_rate {
-            println!("Resampling from {}Hz to {}Hz", self.sample_rate, self.target_sample_rate);
+            println!(
+                "Resampling from {}Hz to {}Hz",
+                self.sample_rate, self.target_sample_rate
+            );
             audio_data = self.resample_audio(&audio_data)?;
         }
 
@@ -132,10 +132,10 @@ impl AudioCapture {
 
     fn resample_audio(&self, input: &[f32]) -> Result<Vec<f32>> {
         use rubato::Resampler;
-        
+
         // Calculate ratio
         let ratio = self.target_sample_rate as f64 / self.sample_rate as f64;
-        
+
         let params = SincInterpolationParameters {
             sinc_len: 256,
             f_cutoff: 0.95,
@@ -146,27 +146,24 @@ impl AudioCapture {
 
         let chunk_size = 1024;
         let mut resampler = SincFixedIn::<f32>::new(
-            ratio,
-            2.0,
-            params,
-            chunk_size,
-            1, // mono
-        ).map_err(|e| WhisperTalkError::Audio(format!("Failed to create resampler: {}", e)))?;
+            ratio, 2.0, params, chunk_size, 1, // mono
+        )
+        .map_err(|e| WhisperTalkError::Audio(format!("Failed to create resampler: {}", e)))?;
 
         let mut output = Vec::with_capacity((input.len() as f64 * ratio) as usize);
-        
+
         // Process in chunks
         for chunk in input.chunks(chunk_size) {
             if chunk.len() == chunk_size {
                 let waves_in = vec![chunk];
                 if let Ok(resampled) = resampler.process(&waves_in, None) {
-                     if let Some(channel) = resampled.first() {
-                         output.extend_from_slice(channel);
-                     }
+                    if let Some(channel) = resampled.first() {
+                        output.extend_from_slice(channel);
+                    }
                 }
             }
         }
-        
+
         Ok(output)
     }
 
@@ -222,13 +219,13 @@ impl AudioCapture {
             .unwrap_or_else(|_| "Unknown".to_string());
         println!("Using audio device: {}", device_name);
 
-        let mut supported_configs_range = device
-            .supported_input_configs()
-            .map_err(|e| WhisperTalkError::Audio(format!("Failed to get supported configs: {}", e)))?;
+        let mut supported_configs_range = device.supported_input_configs().map_err(|e| {
+            WhisperTalkError::Audio(format!("Failed to get supported configs: {}", e))
+        })?;
 
-        let supported_config = supported_configs_range
-            .next()
-            .ok_or_else(|| WhisperTalkError::Audio("No supported audio config found".to_string()))?;
+        let supported_config = supported_configs_range.next().ok_or_else(|| {
+            WhisperTalkError::Audio("No supported audio config found".to_string())
+        })?;
 
         let config: StreamConfig = supported_config.with_max_sample_rate().into();
         let input_sample_rate: u32 = config.sample_rate;
@@ -336,7 +333,11 @@ impl AudioCapture {
 
         let input_channels = input_channels as usize;
         let target_channels = self.target_channels as usize;
-        let channels = if input_channels > 1 { target_channels } else { 1 };
+        let channels = if input_channels > 1 {
+            target_channels
+        } else {
+            1
+        };
 
         let resampler = SincFixedIn::<f32>::new(
             self.target_sample_rate as f64 / input_sample_rate as f64,
@@ -359,13 +360,14 @@ impl AudioCapture {
     pub fn recover_stream(&mut self) -> Result<()> {
         // Try to atomically set recovery_in_progress from false to true
         // If it's already true, recovery is in progress
-        if self.recovery_in_progress.compare_exchange(
-            false,
-            true,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-        ).is_err() {
-            return Err(WhisperTalkError::Audio("Recovery already in progress".to_string()));
+        if self
+            .recovery_in_progress
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return Err(WhisperTalkError::Audio(
+                "Recovery already in progress".to_string(),
+            ));
         }
 
         self.is_recovering.store(true, Ordering::Relaxed);
@@ -409,7 +411,9 @@ impl AudioCapture {
             }
         }
 
-        Err(WhisperTalkError::Audio("Failed to recover audio stream".to_string()))
+        Err(WhisperTalkError::Audio(
+            "Failed to recover audio stream".to_string(),
+        ))
     }
 
     #[allow(dead_code)]
@@ -454,7 +458,9 @@ impl AudioCapture {
     }
 
     pub fn detect_zero_volume(&self, audio: &[f32]) -> bool {
-        audio.iter().all(|&sample| sample.abs() < self.zero_volume_threshold)
+        audio
+            .iter()
+            .all(|&sample| sample.abs() < self.zero_volume_threshold)
     }
 }
 

@@ -18,7 +18,6 @@ mod visualizer;
 use app::Application;
 use config::ConfigManager;
 use paths::Paths;
-use std::net::SocketAddr;
 use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{error, info};
@@ -64,6 +63,7 @@ async fn run_daemon(daemon: cli::DaemonArgs) -> anyhow::Result<()> {
     info!("Using backend: {:?}", config.transcription.backend);
     info!("Using model: {}", config.transcription.model);
 
+    let api_listener_addr = daemon.api_bind.or(config.api_bind);
     let mut app = Application::from_config(config)?;
 
     if let Err(e) = app.acquire_instance_lock() {
@@ -80,14 +80,18 @@ async fn run_daemon(daemon: cli::DaemonArgs) -> anyhow::Result<()> {
 
     let mut api_task = None;
     let mut api_shutdown = None;
-    let mut api_listener_addr: Option<SocketAddr> = None;
 
-    if let Some(bind_addr) = daemon.api_bind {
+    if let Some(bind_addr) = api_listener_addr {
+        if daemon.api_bind.is_some() {
+            info!("Using CLI --api-bind: {}", bind_addr);
+        } else {
+            info!("Using config api_bind: {}", bind_addr);
+        }
+
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         api_task =
             Some(api::spawn_api_server(app.api_application(), bind_addr, shutdown_rx).await?);
         api_shutdown = Some(shutdown_tx);
-        api_listener_addr = Some(bind_addr);
     }
 
     if let Some(address) = api_listener_addr {

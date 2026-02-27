@@ -1,8 +1,8 @@
 use crate::error::Result;
+use futures_util::StreamExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::oneshot;
-use futures_util::StreamExt;
 use zbus::Connection;
 
 pub struct SuspendMonitor {

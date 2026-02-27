@@ -57,15 +57,15 @@ fn print_daemon_status(paths: &Paths) {
     // Check if lock file exists and is held
     if paths.lock_file.exists() {
         let lock_held = std::fs::File::open(&paths.lock_file)
-            .and_then(|file| {
+            .map(|file| {
                 use std::os::unix::io::AsRawFd;
                 let fd = file.as_raw_fd();
                 let result = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
                 if result == 0 {
                     unsafe { libc::flock(fd, libc::LOCK_UN) };
-                    Ok(false)
+                    false
                 } else {
-                    Ok(true)
+                    true
                 }
             })
             .unwrap_or(false);
@@ -157,7 +157,10 @@ fn print_dependency_status() {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
-    println!("  ydotool: {}", if ydotool_ok { "✓" } else { "✗ not found" });
+    println!(
+        "  ydotool: {}",
+        if ydotool_ok { "✓" } else { "✗ not found" }
+    );
 
     // Check pactl
     let pactl_ok = Command::new("pactl")
@@ -173,7 +176,10 @@ fn print_dependency_status() {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
-    println!("  hyprctl: {}", if hyprctl_ok { "✓" } else { "- not available" });
+    println!(
+        "  hyprctl: {}",
+        if hyprctl_ok { "✓" } else { "- not available" }
+    );
 
     // Check GPU
     let nvidia_ok = Command::new("nvidia-smi")
@@ -220,10 +226,7 @@ fn print_audio_status() {
     println!("\n== Audio ==");
 
     // Try to get default source from pactl
-    if let Ok(output) = Command::new("pactl")
-        .args(["get-default-source"])
-        .output()
-    {
+    if let Ok(output) = Command::new("pactl").args(["get-default-source"]).output() {
         if output.status.success() {
             let source = String::from_utf8_lossy(&output.stdout).trim().to_string();
             println!("  Default source: {}", source);

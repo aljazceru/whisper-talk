@@ -99,7 +99,7 @@ pub fn run_uninstall(args: UninstallArgs) -> Result<()> {
                 if content.contains("custom/whisper-talk") {
                     // Use the waybar removal function
                     let _ = crate::integration::waybar::handle_waybar(
-                        crate::integration::waybar::WaybarCommand::Remove
+                        crate::integration::waybar::WaybarCommand::Remove,
                     );
                 }
             }
@@ -150,7 +150,10 @@ pub fn run_uninstall(args: UninstallArgs) -> Result<()> {
 
                 match status {
                     Ok(s) if s.success() => println!("    ✓ Removed from {}", group),
-                    _ => println!("    ✗ Failed to remove from {} (may require manual sudo)", group),
+                    _ => println!(
+                        "    ✗ Failed to remove from {} (may require manual sudo)",
+                        group
+                    ),
                 }
             }
         }
