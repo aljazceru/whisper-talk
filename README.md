@@ -16,7 +16,7 @@ System-wide voice dictation for Linux with Whisper backend.
 ### How It Works
 
 1. Press your configured global shortcut (default: `SUPER+ALT+D`)
-2. gwhspr starts recording from your microphone
+2. whisper-talk starts recording from your microphone
 3. Speak your text
 4. Press the shortcut again
 5. Audio is transcribed locally using Whisper 
