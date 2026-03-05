@@ -1,6 +1,6 @@
 use crate::error::{Result, WhisperTalkError};
 use crate::types::RecordingMode;
-use evdev::{Device, KeyCode};
+use evdev::{Device, EventType, KeyCode};
 use parking_lot::Mutex;
 use std::os::fd::AsRawFd;
 use std::sync::Arc;
@@ -74,7 +74,7 @@ impl GlobalShortcuts {
     }
 
     fn find_keyboard_device() -> Result<Option<Device>> {
-        let mut candidates: Vec<(std::path::PathBuf, String, usize, bool)> = Vec::new();
+        let mut candidates: Vec<(std::path::PathBuf, String, usize, bool, bool)> = Vec::new();
 
         let entries: Vec<_> = std::fs::read_dir("/dev/input")
             .map_err(|e| WhisperTalkError::Input(format!("Failed to read /dev/input: {}", e)))?
@@ -115,7 +115,11 @@ impl GlobalShortcuts {
                         if key_count > 50 && !is_virtual {
                             // Prefer devices with "keyboard" in the name
                             let is_keyboard = name_lower.contains("keyboard");
-                            candidates.push((entry_path.clone(), name, key_count, is_keyboard));
+                            // Deprioritize devices with mouse capabilities (REL/ABS axes)
+                            let has_mouse_axes = dev
+                                .supported_events()
+                                .contains(EventType::RELATIVE);
+                            candidates.push((entry_path.clone(), name, key_count, is_keyboard, has_mouse_axes));
                         }
                     }
                     Err(e) => {
@@ -125,14 +129,24 @@ impl GlobalShortcuts {
             }
         }
 
-        // Sort: keyboards first, then by key count descending
-        candidates.sort_by(|a, b| match (a.3, b.3) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => b.2.cmp(&a.2),
+        // Sort: keyboards first, then non-mouse devices, then by key count descending
+        candidates.sort_by(|a, b| {
+            // Prefer devices with "keyboard" in name
+            match (a.3, b.3) {
+                (true, false) => return std::cmp::Ordering::Less,
+                (false, true) => return std::cmp::Ordering::Greater,
+                _ => {}
+            }
+            // Deprioritize devices with mouse axes (REL events)
+            match (a.4, b.4) {
+                (false, true) => return std::cmp::Ordering::Less,
+                (true, false) => return std::cmp::Ordering::Greater,
+                _ => {}
+            }
+            b.2.cmp(&a.2)
         });
 
-        if let Some((path, name, key_count, _)) = candidates.first() {
+        if let Some((path, name, key_count, _, _)) = candidates.first() {
             println!(
                 "Using keyboard device: {} ({}, {} keys)",
                 path.display(),
