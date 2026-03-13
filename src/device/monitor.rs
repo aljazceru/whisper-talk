@@ -10,6 +10,7 @@ const DEBOUNCE_PERIOD: Duration = Duration::from_secs(2);
 type OnDeviceCallback = dyn Fn(&udev::Device) + Send + Sync;
 
 pub struct DeviceMonitor {
+    subsystem: &'static str,
     on_add: Arc<OnDeviceCallback>,
     on_remove: Arc<OnDeviceCallback>,
     running: Arc<AtomicBool>,
@@ -19,12 +20,13 @@ pub struct DeviceMonitor {
 }
 
 impl DeviceMonitor {
-    pub fn new<F1, F2>(on_add: F1, on_remove: F2) -> Result<Self>
+    pub fn new<F1, F2>(subsystem: &'static str, on_add: F1, on_remove: F2) -> Result<Self>
     where
         F1: Fn(&udev::Device) + Send + Sync + 'static,
         F2: Fn(&udev::Device) + Send + Sync + 'static,
     {
         Ok(Self {
+            subsystem,
             on_add: Arc::new(on_add),
             on_remove: Arc::new(on_remove),
             running: Arc::new(AtomicBool::new(false)),
@@ -44,6 +46,7 @@ impl DeviceMonitor {
 
         let on_add = Arc::clone(&self.on_add);
         let on_remove = Arc::clone(&self.on_remove);
+        let subsystem = self.subsystem;
         let running = Arc::clone(&self.running);
         let last_event_time = Arc::clone(&self.last_event_time);
         let start_time = self.start_time.unwrap();
@@ -53,7 +56,7 @@ impl DeviceMonitor {
             .spawn(move || {
                 // Build the monitor using MonitorBuilder
                 let socket = match udev::MonitorBuilder::new() {
-                    Ok(builder) => match builder.match_subsystem("sound") {
+                    Ok(builder) => match builder.match_subsystem(subsystem) {
                         Ok(b) => match b.listen() {
                             Ok(s) => s,
                             Err(e) => {
@@ -62,7 +65,7 @@ impl DeviceMonitor {
                             }
                         },
                         Err(e) => {
-                            eprintln!("Failed to match sound subsystem: {}", e);
+                            eprintln!("Failed to match {} subsystem: {}", subsystem, e);
                             return;
                         }
                     },

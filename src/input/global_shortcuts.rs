@@ -3,6 +3,7 @@ use crate::types::RecordingMode;
 use evdev::{Device, EventType, KeyCode};
 use parking_lot::Mutex;
 use std::os::fd::AsRawFd;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -94,11 +95,14 @@ impl GlobalShortcuts {
                             .map_or(0, |keys| keys.into_iter().count());
                         let name = dev.name().unwrap_or("Unknown").to_string();
                         let name_lower = name.to_lowercase();
+                        let is_virtual_path = Self::is_virtual_input_device(&entry_path);
 
                         // Skip virtual devices (ydotool, uinput, etc.)
                         let is_virtual = name_lower.contains("ydotool")
+                            || name_lower.contains("solaar")
                             || name_lower.contains("virtual")
-                            || name_lower.contains("uinput");
+                            || name_lower.contains("uinput")
+                            || is_virtual_path;
 
                         eprintln!(
                             "  {}: {} ({} keys){}",
@@ -116,10 +120,15 @@ impl GlobalShortcuts {
                             // Prefer devices with "keyboard" in the name
                             let is_keyboard = name_lower.contains("keyboard");
                             // Deprioritize devices with mouse capabilities (REL/ABS axes)
-                            let has_mouse_axes = dev
-                                .supported_events()
-                                .contains(EventType::RELATIVE);
-                            candidates.push((entry_path.clone(), name, key_count, is_keyboard, has_mouse_axes));
+                            let has_mouse_axes =
+                                dev.supported_events().contains(EventType::RELATIVE);
+                            candidates.push((
+                                entry_path.clone(),
+                                name,
+                                key_count,
+                                is_keyboard,
+                                has_mouse_axes,
+                            ));
                         }
                     }
                     Err(e) => {
@@ -252,6 +261,18 @@ impl GlobalShortcuts {
                 c
             ))),
         }
+    }
+
+    fn is_virtual_input_device(event_path: &Path) -> bool {
+        let Some(sysname) = event_path.file_name() else {
+            return false;
+        };
+
+        let sysfs_path = Path::new("/sys/class/input").join(sysname).join("device");
+        sysfs_path
+            .canonicalize()
+            .ok()
+            .is_some_and(|path| path.to_string_lossy().contains("/devices/virtual/"))
     }
 
     pub fn start(&self, recording_mode: RecordingMode) -> Result<()> {

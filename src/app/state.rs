@@ -38,6 +38,7 @@ pub struct Application {
     text_injector: Arc<Mutex<Option<TextInjector>>>,
     audio_feedback: Arc<Mutex<Option<AudioFeedback>>>,
     device_monitor: Arc<Mutex<Option<DeviceMonitor>>>,
+    keyboard_monitor: Arc<Mutex<Option<DeviceMonitor>>>,
     suspend_monitor: Arc<Mutex<Option<SuspendMonitor>>>,
     pulse_monitor: Arc<Mutex<Option<PulseMonitor>>>,
     mic_osd: Arc<Mutex<Option<MicOsdDaemon>>>,
@@ -54,6 +55,7 @@ pub struct Application {
 pub enum RecoveryEvent {
     AudioFailure,
     HotplugDevice(DeviceProperties),
+    KeyboardHotplug,
     PulseAudioEvent,
     SuspendResume,
 }
@@ -80,6 +82,7 @@ impl Application {
             text_injector: Arc::new(Mutex::new(None)),
             audio_feedback: Arc::new(Mutex::new(None)),
             device_monitor: Arc::new(Mutex::new(None)),
+            keyboard_monitor: Arc::new(Mutex::new(None)),
             suspend_monitor: Arc::new(Mutex::new(None)),
             pulse_monitor: Arc::new(Mutex::new(None)),
             mic_osd: Arc::new(Mutex::new(None)),
@@ -152,6 +155,10 @@ impl Application {
             RecoveryEvent::HotplugDevice(device_props) => {
                 eprintln!("Triggering recovery: Hotplug event {:?}", device_props);
                 self.recover_audio_capture().await
+            }
+            RecoveryEvent::KeyboardHotplug => {
+                eprintln!("Triggering recovery: Keyboard hotplug");
+                self.recover_shortcuts()
             }
             RecoveryEvent::PulseAudioEvent => {
                 eprintln!("Triggering recovery: PulseAudio event");
@@ -402,6 +409,29 @@ impl Application {
         Ok(())
     }
 
+    fn recover_shortcuts(&self) -> Result<()> {
+        let config = self.config.lock().clone();
+        let shortcut_str = config.shortcuts.primary_shortcut.clone();
+        let recording_mode = config.shortcuts.recording_mode;
+        let grab_mode = config.shortcuts.grab_keys;
+
+        if let Some(ref mut shortcuts) = self.global_shortcuts.lock().as_mut() {
+            shortcuts.stop()?;
+        }
+
+        let app_press = self.clone();
+        let app_release = self.clone();
+        let on_press = move || app_press.on_shortcut_press();
+        let on_release = move || app_release.on_shortcut_release();
+
+        let shortcuts = GlobalShortcuts::new(&shortcut_str, on_press, on_release, None, grab_mode)?;
+        let shortcuts_clone = shortcuts.clone();
+        *self.global_shortcuts.lock() = Some(shortcuts);
+        shortcuts_clone.start(recording_mode)?;
+
+        Ok(())
+    }
+
     async fn transcribe_audio(
         &self,
         audio_data: &[f32],
@@ -641,10 +671,45 @@ impl Application {
             }
         };
 
-        let mut device_monitor = DeviceMonitor::new(on_add, on_remove)?;
+        let mut device_monitor = DeviceMonitor::new("sound", on_add, on_remove)?;
         device_monitor.start()?;
         *self.device_monitor.lock() = Some(device_monitor);
         info!("Device hotplug monitor started");
+
+        let app = self.clone();
+        let on_add = move |device: &udev::Device| {
+            if !is_keyboard_input_device(device) {
+                return;
+            }
+
+            info!("Keyboard device added, triggering shortcut recovery");
+            let tx = app.recovery_tx.lock().clone();
+            if let Some(tx) = tx {
+                app.runtime_handle.spawn(async move {
+                    let _ = tx.send(RecoveryEvent::KeyboardHotplug).await;
+                });
+            }
+        };
+
+        let app = self.clone();
+        let on_remove = move |device: &udev::Device| {
+            if !is_keyboard_input_device(device) {
+                return;
+            }
+
+            info!("Keyboard device removed, triggering shortcut recovery");
+            let tx = app.recovery_tx.lock().clone();
+            if let Some(tx) = tx {
+                app.runtime_handle.spawn(async move {
+                    let _ = tx.send(RecoveryEvent::KeyboardHotplug).await;
+                });
+            }
+        };
+
+        let mut keyboard_monitor = DeviceMonitor::new("input", on_add, on_remove)?;
+        keyboard_monitor.start()?;
+        *self.keyboard_monitor.lock() = Some(keyboard_monitor);
+        info!("Keyboard hotplug monitor started");
 
         // Suspend/resume monitor
         let app = self.clone();
@@ -731,6 +796,10 @@ impl Application {
             monitor.stop();
             info!("Device monitor stopped");
         }
+        if let Some(ref mut monitor) = self.keyboard_monitor.lock().take() {
+            monitor.stop();
+            info!("Keyboard monitor stopped");
+        }
         if let Some(ref mut monitor) = self.suspend_monitor.lock().take() {
             monitor.stop();
             info!("Suspend monitor stopped");
@@ -762,6 +831,13 @@ impl Application {
             self.stop_recording();
         }
     }
+}
+
+fn is_keyboard_input_device(device: &udev::Device) -> bool {
+    device
+        .property_value("ID_INPUT_KEYBOARD")
+        .and_then(|value| value.to_str())
+        == Some("1")
 }
 
 impl Drop for OwnedApplication {
