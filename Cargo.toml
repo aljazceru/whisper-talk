@@ -14,7 +14,7 @@ categories = ["command-line-utilities", "multimedia::audio"]
 futures-util = { version = "0.3.31", default-features = false, features = ["alloc"] }
 
 [dependencies.axum]
-version = "0.7"
+version = "0.8"
 features = ["multipart"]
 
 [dependencies.cpal]
