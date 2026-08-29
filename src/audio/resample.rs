@@ -152,9 +152,9 @@ mod tests {
         let input: Vec<f32> = vec![0.5; 48000];
         let result = resample_to_16khz(&input, 48000, 1).unwrap();
         assert_eq!(result.len(), 16000);
-        // The first few samples carry the anti-aliasing filter's startup
-        // transient; the bulk must preserve the DC level.
-        let bulk = &result[32..];
+        // The first/last few samples carry the anti-aliasing filter's startup
+        // and end-of-clip edge transients; the interior must preserve DC.
+        let bulk = &result[8..result.len() - 8];
         let peak_deviation = bulk
             .iter()
             .map(|s| (s - 0.5).abs())
