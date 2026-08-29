@@ -70,6 +70,7 @@ impl NotificationManager {
 
         #[cfg(not(feature = "notifications"))]
         {
+            let _ = urgency; // only consumed by the notifications feature build
             debug!("Notification disabled, skipping: {} - {}", title, body);
             Ok(())
         }
