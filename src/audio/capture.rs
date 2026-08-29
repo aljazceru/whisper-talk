@@ -2,13 +2,10 @@ use crate::error::{Result, WhisperTalkError};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Sample, SampleFormat, StreamConfig};
 use parking_lot::Mutex;
-use rubato::{SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
-
-type ConcreteResampler = SincFixedIn<f32>;
 
 /// Wrapper to make non-Send stream types usable in Send contexts.
 /// This is safe because the stream is always accessed through a mutex.
@@ -34,7 +31,6 @@ pub struct AudioCapture {
     target_channels: u16,
     zero_volume_threshold: f32,
     stream: Arc<Mutex<SendableStream>>,
-    resampler: Arc<Mutex<Option<ConcreteResampler>>>,
     recovery_in_progress: Arc<AtomicBool>,
     abort_recovery: Arc<AtomicBool>,
     is_recovering: Arc<AtomicBool>,
@@ -57,7 +53,6 @@ impl AudioCapture {
             target_channels: 1,
             zero_volume_threshold: config.zero_volume_threshold,
             stream: Arc::new(Mutex::new(SendableStream(None))),
-            resampler: Arc::new(Mutex::new(None)),
             recovery_in_progress: Arc::new(AtomicBool::new(false)),
             abort_recovery: Arc::new(AtomicBool::new(false)),
             is_recovering: Arc::new(AtomicBool::new(false)),
@@ -131,40 +126,8 @@ impl AudioCapture {
     }
 
     fn resample_audio(&self, input: &[f32]) -> Result<Vec<f32>> {
-        use rubato::Resampler;
-
-        // Calculate ratio
-        let ratio = self.target_sample_rate as f64 / self.sample_rate as f64;
-
-        let params = SincInterpolationParameters {
-            sinc_len: 256,
-            f_cutoff: 0.95,
-            interpolation: SincInterpolationType::Cubic,
-            oversampling_factor: 256,
-            window: WindowFunction::BlackmanHarris2,
-        };
-
-        let chunk_size = 1024;
-        let mut resampler = SincFixedIn::<f32>::new(
-            ratio, 2.0, params, chunk_size, 1, // mono
-        )
-        .map_err(|e| WhisperTalkError::Audio(format!("Failed to create resampler: {}", e)))?;
-
-        let mut output = Vec::with_capacity((input.len() as f64 * ratio) as usize);
-
-        // Process in chunks
-        for chunk in input.chunks(chunk_size) {
-            if chunk.len() == chunk_size {
-                let waves_in = vec![chunk];
-                if let Ok(resampled) = resampler.process(&waves_in, None) {
-                    if let Some(channel) = resampled.first() {
-                        output.extend_from_slice(channel);
-                    }
-                }
-            }
-        }
-
-        Ok(output)
+        crate::audio::resample::resample_to_16khz(input, self.sample_rate, 1)
+            .map_err(|e| WhisperTalkError::Audio(format!("Failed to resample audio: {}", e)))
     }
 
     fn find_device(&self) -> Result<cpal::Device> {
@@ -234,9 +197,6 @@ impl AudioCapture {
 
         self.sample_rate = input_sample_rate; // Store actual sample rate
 
-        // No resampler in callback - we do it in stop_recording
-        *self.resampler.lock() = None;
-
         let stream = match sample_format {
             SampleFormat::F32 => self.build_stream::<f32>(&device, &config, input_channels)?,
             SampleFormat::I16 => self.build_stream::<i16>(&device, &config, input_channels)?,
@@ -274,7 +234,6 @@ impl AudioCapture {
         let is_recording_clone = self.is_recording.clone();
         let audio_buffer_clone = self.audio_buffer.clone();
         let audio_level_clone = self.audio_level.clone();
-        let _resampler_clone = self.resampler.clone();
         let _target_sample_rate = self.target_sample_rate;
         let target_channels = self.target_channels;
         let input_channels = input_channels as usize;
@@ -311,44 +270,6 @@ impl AudioCapture {
         stream.play()?;
 
         Ok(Box::new(stream))
-    }
-
-    #[allow(dead_code)]
-    fn create_resampler(
-        &self,
-        input_sample_rate: u32,
-        input_channels: u16,
-    ) -> Result<Option<ConcreteResampler>> {
-        if input_sample_rate == self.target_sample_rate && input_channels == self.target_channels {
-            return Ok(None);
-        }
-
-        let params = SincInterpolationParameters {
-            sinc_len: 256,
-            f_cutoff: 0.95,
-            interpolation: SincInterpolationType::Cubic,
-            oversampling_factor: 256,
-            window: WindowFunction::BlackmanHarris2,
-        };
-
-        let input_channels = input_channels as usize;
-        let target_channels = self.target_channels as usize;
-        let channels = if input_channels > 1 {
-            target_channels
-        } else {
-            1
-        };
-
-        let resampler = SincFixedIn::<f32>::new(
-            self.target_sample_rate as f64 / input_sample_rate as f64,
-            2.0,
-            params,
-            1024,
-            channels,
-        )
-        .map_err(|e| WhisperTalkError::Audio(format!("Failed to create resampler: {}", e)))?;
-
-        Ok(Some(resampler))
     }
 
     fn terminate_stream(&self) {

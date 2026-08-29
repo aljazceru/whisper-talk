@@ -1,7 +1,7 @@
 #![allow(dead_code)]
-use rubato::{
-    Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
-};
+use rubato::audioadapter_buffers::direct::InterleavedSlice;
+use rubato::audioadapter_buffers::owned::InterleavedOwned;
+use rubato::{Fft, FixedSync, Resampler};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -75,65 +75,30 @@ fn resample_with_rubato(
         return Ok(Vec::new());
     }
 
-    let resample_ratio = output_rate as f64 / input_rate as f64;
+    let frames = input_data.len(); // mono input
+    let chunk_size = frames.clamp(64, 1024);
 
-    // Use sinc interpolation for high quality resampling
-    let params = SincInterpolationParameters {
-        sinc_len: 256,
-        f_cutoff: 0.95,
-        interpolation: SincInterpolationType::Linear,
-        oversampling_factor: 256,
-        window: WindowFunction::BlackmanHarris2,
-    };
-
-    // Calculate chunk size based on input length
-    let chunk_size = input_data.len().clamp(64, 1024);
-
-    let mut resampler = SincFixedIn::<f32>::new(
-        resample_ratio,
-        2.0, // max relative ratio change
-        params,
+    // FFT-based synchronous resampler. Both sides fixed: chunk_size is a hint,
+    // actual block sizes are rounded to fit the exact rate ratio.
+    let mut resampler = Fft::<f32>::new(
+        input_rate as usize,
+        output_rate as usize,
         chunk_size,
-        1, // mono channel
+        1, // mono
+        FixedSync::Both,
     )
     .map_err(|e| ResampleError::Other(e.to_string()))?;
 
-    // Process in chunks
-    let mut output = Vec::new();
-    let mut pos = 0;
+    let input = InterleavedSlice::<&[f32]>::new(input_data, 1, frames)
+        .map_err(|e| ResampleError::Other(e.to_string()))?;
 
-    while pos < input_data.len() {
-        let end = (pos + chunk_size).min(input_data.len());
-        let chunk = &input_data[pos..end];
+    // process_all runs the chunk loop, trims the resampler startup delay, and
+    // returns exactly the resampled frames.
+    let output: InterleavedOwned<f32> = resampler
+        .process_all(&input, frames, None)
+        .map_err(|e| ResampleError::Other(e.to_string()))?;
 
-        // Pad chunk if needed
-        let input_chunk = if chunk.len() < chunk_size {
-            let mut padded = chunk.to_vec();
-            padded.resize(chunk_size, 0.0);
-            padded
-        } else {
-            chunk.to_vec()
-        };
-
-        let waves_in = vec![input_chunk];
-
-        match resampler.process(&waves_in, None) {
-            Ok(waves_out) => {
-                if !waves_out.is_empty() {
-                    output.extend_from_slice(&waves_out[0]);
-                }
-            }
-            Err(e) => return Err(ResampleError::Other(e.to_string())),
-        }
-
-        pos += chunk_size;
-    }
-
-    // Trim to expected output length
-    let expected_len = ((input_data.len() as f64) * resample_ratio).ceil() as usize;
-    output.truncate(expected_len);
-
-    Ok(output)
+    Ok(output.take_data())
 }
 
 #[cfg(test)]
@@ -179,5 +144,33 @@ mod tests {
         assert_eq!(result[0], 0.75);
         assert_eq!(result[1], 0.5);
         assert_eq!(result[2], 0.5);
+    }
+
+    #[test]
+    fn test_resample_48k_to_16k_length_and_content() {
+        // 1 second of 48 kHz DC-offset audio resamples to ~1 second of 16 kHz.
+        let input: Vec<f32> = vec![0.5; 48000];
+        let result = resample_to_16khz(&input, 48000, 1).unwrap();
+        assert_eq!(result.len(), 16000);
+        // The first few samples carry the anti-aliasing filter's startup
+        // transient; the bulk must preserve the DC level.
+        let bulk = &result[32..];
+        let peak_deviation = bulk
+            .iter()
+            .map(|s| (s - 0.5).abs())
+            .fold(0.0f32, f32::max);
+        assert!(
+            peak_deviation < 0.01,
+            "DC level drifted by {} after resampling",
+            peak_deviation
+        );
+    }
+
+    #[test]
+    fn test_resample_44100_to_16k_odd_ratio() {
+        // 44.1 kHz -> 16 kHz is a 160/441 ratio; exercises non-integer ratios.
+        let input: Vec<f32> = vec![0.25; 44100];
+        let result = resample_to_16khz(&input, 44100, 1).unwrap();
+        assert_eq!(result.len(), 16000);
     }
 }
