@@ -12,13 +12,14 @@ use axum::{
 use hound::SampleFormat;
 use serde_json::json;
 use std::str::FromStr;
-use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::DecoderOptions;
+use symphonia::core::codecs::CodecParameters;
+use symphonia::core::codecs::audio::AudioDecoderOptions;
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::FormatOptions;
+use symphonia::core::formats::TrackType;
+use symphonia::core::formats::probe::Hint;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
-use symphonia::core::probe::Hint;
 use symphonia::default::{get_codecs, get_probe};
 use tokio::sync::oneshot;
 use tracing::{error, info};
@@ -363,49 +364,53 @@ fn decode_with_symphonia(file: &[u8]) -> std::result::Result<(Vec<f32>, u32, u16
     let mss = MediaSourceStream::new(source, Default::default());
     let hint = Hint::new();
 
-    let probed = get_probe()
-        .format(
+    let mut format = get_probe()
+        .probe(
             &hint,
             mss,
-            &FormatOptions::default(),
-            &MetadataOptions::default(),
+            FormatOptions::default(),
+            MetadataOptions::default(),
         )
         .map_err(|error| format!("Unsupported audio format: {}", error))?;
 
-    let mut format = probed.format;
     let track = format
-        .default_track()
+        .default_track(TrackType::Audio)
         .ok_or_else(|| "No readable audio track found in file".to_string())?;
 
     let track_id = track.id;
-    let codec_params = &track.codec_params;
-    let sample_rate = codec_params
+    let audio_params = match track.codec_params.as_ref() {
+        Some(CodecParameters::Audio(params)) => params,
+        Some(_) => return Err("Track is not an audio track".to_string()),
+        None => return Err("Audio codec parameters are missing".to_string()),
+    };
+
+    let sample_rate = audio_params
         .sample_rate
         .ok_or_else(|| "Audio sample rate is missing".to_string())?;
-    let channels = codec_params
+    let channels = audio_params
         .channels
         .as_ref()
         .map(|channels| channels.count() as u16)
         .unwrap_or(1);
 
-    let mut decoder = get_codecs()
-        .make(codec_params, &DecoderOptions::default())
+    let registered_decoder = get_codecs()
+        .get_audio_decoder(audio_params.codec)
+        .ok_or_else(|| format!("Unsupported audio codec: {:?}", audio_params.codec))?;
+
+    let mut decoder = (registered_decoder.factory)(audio_params, &AudioDecoderOptions::default())
         .map_err(|error| format!("Failed to initialize decoder: {}", error))?;
 
     let mut output: Vec<f32> = Vec::new();
     let output_channels = if channels > 2 { 1 } else { channels };
     loop {
         let packet = match format.next_packet() {
-            Ok(packet) => packet,
-            Err(SymphoniaError::IoError(error))
-                if error.kind() == std::io::ErrorKind::UnexpectedEof =>
-            {
-                break
-            }
+            // Ok(None) signals a clean end-of-stream in symphonia 0.6.
+            Ok(Some(packet)) => packet,
+            Ok(None) => break,
             Err(error) => return Err(format!("Failed to decode packets: {}", error)),
         };
 
-        if packet.track_id() != track_id {
+        if packet.track_id != track_id {
             continue;
         }
 
@@ -423,15 +428,15 @@ fn decode_with_symphonia(file: &[u8]) -> std::result::Result<(Vec<f32>, u32, u16
             continue;
         }
 
-        let spec = *packet_data.spec();
-        let spec_channels = spec.channels.count();
-        let required_capacity = packet_data.capacity() * spec_channels;
-        let mut buffer = SampleBuffer::<f32>::new(required_capacity as u64, spec);
-        buffer.copy_interleaved_ref(packet_data);
-        let interleaved = buffer.samples();
+        let spec = packet_data.spec();
+        let spec_channels = spec.channels().count();
+        // copy_to_vec_interleaved resizes (overwrites) its destination, so
+        // decode into a per-packet scratch buffer first.
+        let mut interleaved: Vec<f32> = Vec::with_capacity(decoded_sample_count * spec_channels);
+        packet_data.copy_to_vec_interleaved(&mut interleaved);
 
         if channels == 1 {
-            output.extend_from_slice(interleaved);
+            output.extend_from_slice(&interleaved);
             continue;
         }
 

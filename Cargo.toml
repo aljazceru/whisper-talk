@@ -25,7 +25,7 @@ features = []
 version = "3.5"
 
 [dependencies.symphonia]
-version = "0.5"
+version = "0.6"
 features = ["all-formats", "all-codecs"]
 
 [dependencies.rubato]
