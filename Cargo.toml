@@ -32,9 +32,9 @@ features = ["all-formats", "all-codecs"]
 version = "0.16"
 
 [dependencies.rodio]
-version = "0.20"
+version = "0.22"
 default-features = false
-features = ["vorbis"]
+features = ["playback", "vorbis"]
 
 [dependencies.whisper-rs]
 version = "0.15"

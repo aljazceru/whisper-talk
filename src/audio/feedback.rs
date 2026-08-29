@@ -2,7 +2,8 @@ use crate::error::{Result, WhisperTalkError};
 use crate::paths::Paths;
 use crate::types::FeedbackConfig;
 use parking_lot::Mutex;
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
+use rodio::mixer::Mixer;
+use rodio::{Decoder, DeviceSinkBuilder, Source};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -11,27 +12,25 @@ use std::sync::Arc;
 pub struct AudioFeedback {
     config: Arc<Mutex<FeedbackConfig>>,
     paths: Arc<Paths>,
-    _stream: OutputStream,
-    stream_handle: OutputStreamHandle,
+    mixer: Mixer,
+    // Kept alive for as long as AudioFeedback exists; dropping it stops all
+    // playback through `mixer`.
+    _sink: std::sync::Mutex<rodio::MixerDeviceSink>,
 }
-
-// SAFETY: AudioFeedback is always accessed through a Mutex in Application,
-// so we guarantee single-threaded access. The non-Send OutputStream is never
-// actually sent across threads, it just lives in a struct that needs to be Send.
-unsafe impl Send for AudioFeedback {}
-unsafe impl Sync for AudioFeedback {}
 
 impl AudioFeedback {
     pub fn new(feedback_config: &FeedbackConfig, paths: &Paths) -> Result<Self> {
-        let (stream, stream_handle) = OutputStream::try_default().map_err(|e| {
+        let mut sink = DeviceSinkBuilder::open_default_sink().map_err(|e| {
             WhisperTalkError::Audio(format!("Failed to create output stream: {}", e))
         })?;
+        sink.log_on_drop(false);
+        let mixer = sink.mixer().clone();
 
         Ok(Self {
             config: Arc::new(Mutex::new(feedback_config.clone())),
             paths: Arc::new(paths.clone()),
-            _stream: stream,
-            stream_handle,
+            mixer,
+            _sink: std::sync::Mutex::new(sink),
         })
     }
 
@@ -123,22 +122,16 @@ impl AudioFeedback {
         let source = Decoder::new_vorbis(BufReader::new(file))
             .map_err(|e| WhisperTalkError::Audio(format!("Failed to decode audio: {}", e)))?;
 
-        let sink = Sink::try_new(&self.stream_handle)
-            .map_err(|e| WhisperTalkError::Audio(format!("Failed to create sink: {}", e)))?;
-
         let config = self.config.lock();
         let master_volume = config.master_volume;
         let sound_volume = volume_getter(&config);
         drop(config);
 
         let final_volume = (master_volume * sound_volume).clamp(0.0, 1.0);
-        sink.set_volume(final_volume as f32);
 
-        sink.append(source);
-
-        std::thread::spawn(move || {
-            sink.sleep_until_end();
-        });
+        // The mixer plays the source to completion on its own thread; no
+        // per-sound sink or sleep_until_end bookkeeping is needed.
+        self.mixer.add(source.amplify(final_volume as f32));
 
         Ok(())
     }
