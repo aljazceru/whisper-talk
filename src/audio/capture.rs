@@ -230,7 +230,7 @@ impl AudioCapture {
         T: cpal::Sample + cpal::SizedSample + Send + Sync + 'static,
         f32: cpal::FromSample<T>,
     {
-        let config_clone = config.clone();
+        let config_clone = *config;
         let is_recording_clone = self.is_recording.clone();
         let audio_buffer_clone = self.audio_buffer.clone();
         let audio_level_clone = self.audio_level.clone();
