@@ -126,9 +126,9 @@ version = "4.11"
 optional = true
 
 [dev-dependencies]
-rstest = "0.24"
-mockall = "0.13"
-tempfile = "3.16"
+rstest = "0.26"
+mockall = "0.15"
+tempfile = "3.27"
 
 [features]
 default = []
