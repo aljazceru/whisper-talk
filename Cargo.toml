@@ -96,7 +96,7 @@ features = ["fmt", "env-filter", "ansi"]
 version = "0.18"
 
 [dependencies.dialoguer]
-version = "0.11"
+version = "0.12"
 
 [dependencies.gtk4]
 version = "0.9"
