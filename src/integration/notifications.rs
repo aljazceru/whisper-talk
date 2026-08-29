@@ -14,15 +14,15 @@ pub enum Urgency {
 }
 
 #[cfg(feature = "notifications")]
-use notify_rust::Uurgency;
+use notify_rust::Urgency as NotifyUrgency;
 
 #[cfg(feature = "notifications")]
-impl From<Urgency> for Uurgency {
+impl From<Urgency> for NotifyUrgency {
     fn from(urgency: Urgency) -> Self {
         match urgency {
-            Urgency::Low => Uurgency::Low,
-            Urgency::Normal => Uurgency::Normal,
-            Urgency::Critical => Uurgency::Critical,
+            Urgency::Low => NotifyUrgency::Low,
+            Urgency::Normal => NotifyUrgency::Normal,
+            Urgency::Critical => NotifyUrgency::Critical,
         }
     }
 }
@@ -39,7 +39,7 @@ impl NotificationManager {
     }
 
     #[allow(dead_code)]
-    pub fn send(&self, title: &str, body: &str, _urgency: Urgency) -> Result<()> {
+    pub fn send(&self, title: &str, body: &str, urgency: Urgency) -> Result<()> {
         if !self.enabled {
             return Ok(());
         }
