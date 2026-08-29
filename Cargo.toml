@@ -98,12 +98,8 @@ version = "0.18"
 [dependencies.dialoguer]
 version = "0.12"
 
-[dependencies.gtk4]
-version = "0.9"
-optional = true
-
-[dependencies.gtk4-layer-shell]
-version = "0.4"
+[dependencies.notify-rust]
+version = "4.18"
 optional = true
 
 [dependencies.anyhow]
@@ -121,10 +117,6 @@ version = "1.20"
 [dependencies.regex]
 version = "1.11"
 
-[dependencies.notify-rust]
-version = "4.11"
-optional = true
-
 [dev-dependencies]
 rstest = "0.26"
 mockall = "0.15"
@@ -132,7 +124,6 @@ tempfile = "3.27"
 
 [features]
 default = []
-mic-osd = ["gtk4", "gtk4-layer-shell"]
 notifications = ["notify-rust"]
 # GPU acceleration features
 cuda = ["whisper-rs/cuda"]

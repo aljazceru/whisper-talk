@@ -67,16 +67,9 @@ fn run_mic_osd_status(paths: &Paths) -> Result<()> {
 
     println!("Mic OSD: {}", status);
 
-    // Check if the feature is compiled in
-    #[cfg(feature = "mic-osd")]
-    {
-        println!("GTK4 support: available");
-    }
-
-    #[cfg(not(feature = "mic-osd"))]
-    {
-        println!("GTK4 support: not compiled (build with --features mic-osd)");
-    }
+    // The overlay daemon itself is not implemented yet; enabling only sets
+    // the config flag the future overlay will read.
+    println!("Mic OSD overlay: not implemented in this build");
 
     Ok(())
 }
