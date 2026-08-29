@@ -54,6 +54,7 @@ pub async fn spawn_api_server(
         .route("/v1/audio/transcriptions", post(transcriptions))
         .route("/v1/audio/translations", post(translations))
         .route("/v1/models", get(models))
+        .route("/meetscribe/transcribe", post(meetscribe_transcribe))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(bind_addr).await?;
@@ -452,6 +453,57 @@ fn decode_with_symphonia(file: &[u8]) -> std::result::Result<(Vec<f32>, u32, u16
     }
 
     Ok((output, sample_rate, output_channels))
+}
+
+async fn meetscribe_transcribe(
+    State(state): State<ApiState>,
+    multipart: Multipart,
+) -> Response {
+    // Parse: accepts same multipart as /v1/audio/transcriptions (file, language, prompt)
+    let request = match parse_transcription_request(multipart).await {
+        Ok(value) => value,
+        Err((status, message, param)) => return error_response(status, &message, param.as_deref()),
+    };
+
+    let audio_data = match decode_audio_to_16khz(&request.file) {
+        Ok(value) => value,
+        Err(message) => return error_response(StatusCode::BAD_REQUEST, &message, Some("file")),
+    };
+
+    if audio_data.is_empty() {
+        return error_response(
+            StatusCode::BAD_REQUEST,
+            "No audio samples in uploaded file",
+            Some("file"),
+        );
+    }
+
+    let duration_secs = audio_data.len() as f64 / 16000.0;
+    let language = request.language.clone();
+    let prompt = request.prompt.clone();
+
+    let segments = match state
+        .app
+        .transcribe_file_segments(audio_data, language.clone(), prompt)
+        .await
+    {
+        Ok(value) => value,
+        Err(error) => {
+            return error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                &format!("Transcription failed: {}", error),
+                None,
+            )
+        }
+    };
+
+    let payload = json!({
+        "segments": segments,
+        "language": language.unwrap_or_else(|| "en".to_string()),
+        "duration": duration_secs,
+    });
+
+    (StatusCode::OK, Json(payload)).into_response()
 }
 
 fn decode_wav_with_hound(file: &[u8]) -> std::result::Result<(Vec<f32>, u32, u16), String> {

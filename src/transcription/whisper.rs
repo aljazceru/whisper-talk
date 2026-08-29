@@ -7,6 +7,16 @@ use std::path::PathBuf;
 use std::time::Duration;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
+/// A single transcribed segment with timing information.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TranscriptSegment {
+    /// Start time in seconds.
+    pub start: f64,
+    /// End time in seconds.
+    pub end: f64,
+    pub text: String,
+}
+
 const MAX_RETRIES: u32 = 3;
 const RETRY_DELAY_MS: u64 = 2000;
 const DOWNLOAD_TIMEOUT_SECONDS: u64 = 300;
@@ -88,6 +98,39 @@ impl WhisperBackend {
         prompt: Option<&str>,
         translate: bool,
     ) -> Result<String> {
+        let segments = self.run_transcription(audio_data, language, prompt, translate)?;
+        let mut transcription: String = segments.iter().map(|s| s.text.as_str()).collect();
+        self.filter_hallucinations(&mut transcription);
+        Ok(transcription.trim().to_string())
+    }
+
+    pub fn transcribe_with_segments(
+        &self,
+        audio_data: &[f32],
+        language: Option<&str>,
+        prompt: Option<&str>,
+        translate: bool,
+    ) -> Result<Vec<TranscriptSegment>> {
+        let segments = self.run_transcription(audio_data, language, prompt, translate)?;
+        // Filter out hallucination-only segments
+        let segments = segments
+            .into_iter()
+            .filter(|s| {
+                let mut text = s.text.clone();
+                self.filter_hallucinations(&mut text);
+                !text.trim().is_empty()
+            })
+            .collect();
+        Ok(segments)
+    }
+
+    fn run_transcription(
+        &self,
+        audio_data: &[f32],
+        language: Option<&str>,
+        prompt: Option<&str>,
+        translate: bool,
+    ) -> Result<Vec<TranscriptSegment>> {
         let context = self
             .context
             .as_ref()
@@ -130,19 +173,20 @@ impl WhisperBackend {
             .full(params, audio_data)
             .map_err(|e| WhisperTalkError::Transcription(format!("Transcription failed: {}", e)))?;
 
-        let mut transcription = String::new();
         let num_segments = state.full_n_segments();
+        let mut segments = Vec::with_capacity(num_segments as usize);
 
         for i in 0..num_segments {
             if let Some(segment) = state.get_segment(i) {
-                let segment_text = segment.to_str_lossy().unwrap_or_default().to_string();
-                transcription.push_str(&segment_text);
+                let text = segment.to_str_lossy().unwrap_or_default().to_string();
+                // whisper timestamps are in centiseconds (1/100 of a second)
+                let start = segment.start_timestamp() as f64 / 100.0;
+                let end = segment.end_timestamp() as f64 / 100.0;
+                segments.push(TranscriptSegment { start, end, text });
             }
         }
 
-        self.filter_hallucinations(&mut transcription);
-
-        Ok(transcription.trim().to_string())
+        Ok(segments)
     }
 
     fn filter_hallucinations(&self, text: &mut String) {

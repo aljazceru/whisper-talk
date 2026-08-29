@@ -9,7 +9,7 @@ use crate::injection::TextInjector;
 use crate::input::GlobalShortcuts;
 use crate::instance_lock::InstanceLock;
 use crate::paths::Paths;
-use crate::transcription::WhisperBackend;
+use crate::transcription::{TranscriptSegment, WhisperBackend};
 use crate::types::{Config, RecordingMode};
 use crate::visualizer::daemon::MicOsdDaemon;
 use anyhow;
@@ -476,6 +476,30 @@ impl Application {
             translate,
         )
         .await
+    }
+
+    pub async fn transcribe_file_segments(
+        &self,
+        audio_data: Vec<f32>,
+        language: Option<String>,
+        prompt: Option<String>,
+    ) -> Result<Vec<TranscriptSegment>> {
+        let backend = self.whisper_backend.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let mut wb = backend.lock();
+            let b = wb
+                .as_mut()
+                .ok_or_else(|| anyhow::anyhow!("Whisper backend not loaded"))?;
+            b.transcribe_with_segments(
+                &audio_data,
+                language.as_deref(),
+                prompt.as_deref(),
+                false,
+            )
+        })
+        .await
+        .map_err(|e| WhisperTalkError::Transcription(format!("Join error: {}", e)))?
     }
 
     fn handle_error(&self, error: anyhow::Error, recovery_event: RecoveryEvent) {

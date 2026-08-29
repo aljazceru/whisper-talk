@@ -1,3 +1,3 @@
 pub mod whisper;
 
-pub use whisper::WhisperBackend;
+pub use whisper::{TranscriptSegment, WhisperBackend};
