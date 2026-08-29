@@ -37,7 +37,7 @@ default-features = false
 features = ["playback", "vorbis"]
 
 [dependencies.whisper-rs]
-version = "0.15"
+version = "0.16"
 default-features = false
 
 [dependencies.reqwest]
