@@ -54,14 +54,8 @@ impl From<tokio::task::JoinError> for WhisperTalkError {
     }
 }
 
-impl From<cpal::BuildStreamError> for WhisperTalkError {
-    fn from(err: cpal::BuildStreamError) -> Self {
-        WhisperTalkError::Audio(err.to_string())
-    }
-}
-
-impl From<cpal::PlayStreamError> for WhisperTalkError {
-    fn from(err: cpal::PlayStreamError) -> Self {
+impl From<cpal::Error> for WhisperTalkError {
+    fn from(err: cpal::Error) -> Self {
         WhisperTalkError::Audio(err.to_string())
     }
 }

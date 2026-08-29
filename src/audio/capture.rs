@@ -241,7 +241,7 @@ impl AudioCapture {
         let _zero_volume_threshold = self.zero_volume_threshold;
 
         let stream = device.build_input_stream(
-            &config_clone,
+            config_clone,
             move |data: &[T], _: &cpal::InputCallbackInfo| {
                 if !is_recording_clone.load(Ordering::Relaxed) {
                     return;
