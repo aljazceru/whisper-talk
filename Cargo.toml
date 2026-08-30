@@ -52,10 +52,6 @@ features = ["rt-multi-thread", "sync", "time", "signal", "macros"]
 [dependencies.evdev]
 version = "0.13"
 
-[dependencies.nix]
-version = "0.29"
-features = ["fs", "ioctl"]
-
 [dependencies.libc]
 version = "0.2"
 
@@ -118,8 +114,6 @@ version = "1.20"
 version = "1.11"
 
 [dev-dependencies]
-rstest = "0.26"
-mockall = "0.15"
 tempfile = "3.27"
 
 [features]
