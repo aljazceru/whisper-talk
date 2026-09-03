@@ -2,3 +2,5 @@
 .history
 /target
 /target_check
+config-backup.json
+__pycache__
