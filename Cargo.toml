@@ -9,6 +9,7 @@ license = "MIT"
 readme = "README.md"
 keywords = ["voice", "dictation", "whisper", "speech-recognition", "wayland"]
 categories = ["command-line-utilities", "multimedia::audio"]
+exclude = ["/target_check"]
 
 [dependencies]
 futures-util = { version = "0.3.31", default-features = false, features = ["alloc"] }
@@ -39,6 +40,15 @@ features = ["playback", "vorbis"]
 [dependencies.whisper-rs]
 version = "0.16"
 default-features = false
+
+[dependencies.parakeet-rs]
+version = "0.3.7"
+default-features = false
+
+[dependencies.ort]
+version = "2.0.0-rc.13"
+default-features = false
+features = ["std", "ndarray", "rocm", "load-dynamic", "api-20", "tracing"]
 
 [dependencies.reqwest]
 version = "0.13"
@@ -116,11 +126,14 @@ version = "1.11"
 [dev-dependencies]
 tempfile = "3.27"
 
+[patch.crates-io]
+parakeet-rs = { path = "vendor/parakeet-rs" }
+
 [features]
 default = []
 notifications = ["notify-rust"]
 # GPU acceleration features
-cuda = ["whisper-rs/cuda"]
+cuda = ["whisper-rs/cuda", "ort/cuda"]
 hipblas = ["whisper-rs/hipblas"]
 vulkan = ["whisper-rs/vulkan"]
 metal = ["whisper-rs/metal"]

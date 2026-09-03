@@ -1,0 +1,79 @@
+[package]
+name = "parakeet-rs"
+version = "0.3.7"
+edition = "2024"
+authors = ["altunenes"]
+description = "Fast ASR & Speaker Diarization with NVIDIA Parakeet via ONNX"
+repository = "https://github.com/altunenes/parakeet-rs"
+license = "MIT OR Apache-2.0"
+keywords = ["speech-recognition", "asr", "parakeet", "onnx", "nvidia"]
+categories = ["multimedia::audio", "science"]
+
+[lib]
+name = "parakeet_rs"
+path = "src/lib.rs"
+
+[[example]]
+name = "diarization"
+path = "examples/diarization.rs"
+
+[[example]]
+name = "raw"
+path = "examples/raw.rs"
+
+[[example]]
+name = "streaming"
+path = "examples/streaming.rs"
+
+[[example]]
+name = "multitalker"
+path = "examples/multitalker.rs"
+
+[[example]]
+name = "streaming-diarization"
+path = "examples/streaming_diarization.rs"
+
+[[example]]
+name = "shared_model"
+path = "examples/shared_model.rs"
+
+[[example]]
+name = "cohere"
+path = "examples/cohere.rs"
+required-features = ["cohere"]
+
+[dependencies]
+ort = { version = "2.0.0-rc.13", default-features = false, features = ["std", "ndarray"] }
+hound = "3.5"
+eyre = "0.6"
+ndarray = "0.17"
+tokenizers = { version = "0.23.1", default-features = false, features = ["onig"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+realfft = "3"
+
+[dev-dependencies]
+
+[features]
+default = ["cpu", "ort-defaults", "api-28"]
+cpu = []
+ort-defaults = ["ort/default"]
+
+api-24 = ["ort/api-24"]
+api-25 = ["ort/api-25"]
+api-26 = ["ort/api-26"]
+api-27 = ["ort/api-27"]
+api-28 = ["ort/api-28"]
+cuda = ["ort/cuda"]
+tensorrt = ["ort/tensorrt"]
+coreml = ["ort/coreml"]
+directml = ["ort/directml"]
+migraphx = ["ort/migraphx"]
+openvino = ["ort/openvino"]
+webgpu = ["ort/webgpu"]
+nnapi = ["ort/nnapi"]
+sortformer = []
+multitalker = ["sortformer"]
+cohere = []
+load-dynamic = ["ort/load-dynamic"]
+preload-dylibs = ["ort/preload-dylibs"]

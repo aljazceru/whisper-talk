@@ -1,7 +1,8 @@
 use crate::audio::capture::AudioCapture;
+use crate::cli::model;
 use crate::paths::Paths;
-use crate::transcription::WhisperBackend;
-use crate::types::{AudioConfig, Config, TranscriptionBackend};
+use crate::transcription::Backend;
+use crate::types::{AudioConfig, Config, TranscriptionBackend, TranscriptionConfig};
 use anyhow::Result;
 use clap::Args;
 use dialoguer::{Confirm, Select};
@@ -42,18 +43,23 @@ impl SetupWizard {
             .default(true)
             .interact()?;
 
-        let (model, audio_config) = if use_defaults {
-            ("base".to_string(), AudioConfig::default())
+        let (backend, model, audio_config) = if use_defaults {
+            (
+                TranscriptionBackend::Whisper,
+                "base".to_string(),
+                AudioConfig::default(),
+            )
         } else {
-            let model = self.select_model(TranscriptionBackend::Whisper)?;
+            let backend = self.select_backend()?;
+            let model = self.select_model(backend)?;
             let audio = self.select_audio_device()?;
-            (model, audio)
+            (backend, model, audio)
         };
 
         // Download/verify model
         println!();
         println!("Checking model...");
-        self.download_model(&model, &paths)?;
+        self.download_model(&model, backend, &paths)?;
 
         // Systemd service
         let enable_systemd = self.prompt_systemd()?;
@@ -65,6 +71,7 @@ impl SetupWizard {
 
         // Save config
         let mut final_config = config;
+        final_config.transcription.backend = backend;
         final_config.transcription.model = model;
         final_config.audio = audio_config;
 
@@ -80,17 +87,16 @@ impl SetupWizard {
         Ok(())
     }
 
-    #[allow(dead_code)]
     fn select_backend(&self) -> Result<TranscriptionBackend> {
         println!("Select Transcription Backend:");
         println!("  Whisper:   Local transcription, works on CPU or GPU (CUDA/ROCm)");
-        println!("  Parakeet:  Requires NVIDIA GPU with CUDA support");
+        println!("  Parakeet:  Requires ONNX Runtime 1.20.1; GPU with CUDA or ROCm optional");
         println!();
 
         let selection = Select::new()
             .with_prompt("Which transcription backend would you like to use?")
             .item("Whisper (recommended, works on CPU and GPU)")
-            .item("Parakeet-v3 (NVIDIA GPU only)")
+            .item("Parakeet-v3 (requires ONNX Runtime)")
             .default(0)
             .interact()?;
 
@@ -228,18 +234,28 @@ impl SetupWizard {
         Ok(())
     }
 
-    fn download_model(&self, model: &str, paths: &Paths) -> Result<()> {
-        println!("Preparing to download model: {}", model);
+    fn download_model(
+        &self,
+        model: &str,
+        backend: TranscriptionBackend,
+        paths: &Paths,
+    ) -> Result<()> {
+        println!("Preparing to download/verify model: {}", model);
         println!("Model will be saved to: {}", paths.models_dir.display());
         println!();
 
-        let config = crate::types::TranscriptionConfig {
+        model::run_model_download(model, false, paths)?;
+
+        let config = TranscriptionConfig {
+            backend,
             model: model.to_string(),
             ..Default::default()
         };
 
-        let mut backend = WhisperBackend::new(&config);
-        backend.initialize(paths)?;
+        let mut backend = Backend::new(&config);
+        if !backend.initialize(paths)? {
+            anyhow::bail!("Model '{}' could not be initialized", model);
+        }
 
         println!("Model '{}' is ready for use.", model);
         Ok(())

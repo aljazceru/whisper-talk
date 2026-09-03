@@ -1,7 +1,11 @@
 use std::io::Cursor;
 use std::net::SocketAddr;
 
-use crate::{app::Application, audio::resample::resample_to_16khz, error::Result};
+use crate::{
+    app::Application,
+    audio::resample::resample_to_16khz,
+    error::{Result, WhisperTalkError},
+};
 use axum::{
     extract::{Multipart, State},
     http::{header, HeaderValue, StatusCode},
@@ -12,12 +16,12 @@ use axum::{
 use hound::SampleFormat;
 use serde_json::json;
 use std::str::FromStr;
-use symphonia::core::codecs::CodecParameters;
 use symphonia::core::codecs::audio::AudioDecoderOptions;
+use symphonia::core::codecs::CodecParameters;
 use symphonia::core::errors::Error as SymphoniaError;
+use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::formats::TrackType;
-use symphonia::core::formats::probe::Hint;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::default::{get_codecs, get_probe};
@@ -124,11 +128,11 @@ async fn handle_transcription(state: ApiState, multipart: Multipart, translate: 
     {
         Ok(value) => value,
         Err(error) => {
-            return error_response(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                &format!("Transcription failed: {}", error),
-                None,
-            )
+            let status = match error {
+                WhisperTalkError::UnsupportedOperation(_) => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            return error_response(status, &format!("Transcription failed: {}", error), None);
         }
     };
 
@@ -460,10 +464,7 @@ fn decode_with_symphonia(file: &[u8]) -> std::result::Result<(Vec<f32>, u32, u16
     Ok((output, sample_rate, output_channels))
 }
 
-async fn meetscribe_transcribe(
-    State(state): State<ApiState>,
-    multipart: Multipart,
-) -> Response {
+async fn meetscribe_transcribe(State(state): State<ApiState>, multipart: Multipart) -> Response {
     // Parse: accepts same multipart as /v1/audio/transcriptions (file, language, prompt)
     let request = match parse_transcription_request(multipart).await {
         Ok(value) => value,

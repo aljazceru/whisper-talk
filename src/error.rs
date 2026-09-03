@@ -13,6 +13,9 @@ pub enum WhisperTalkError {
     #[error("Transcription error: {0}")]
     Transcription(String),
 
+    #[error("Unsupported operation: {0}")]
+    UnsupportedOperation(String),
+
     #[error("Input error: {0}")]
     Input(String),
 

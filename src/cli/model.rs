@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::paths::Paths;
+use crate::transcription::parakeet::{ParakeetBackend, ONNX_RUNTIME_HELP};
 
 /// Available Whisper model sizes with their approximate download sizes
 const MODELS: &[(&str, &str, &str)] = &[
@@ -25,7 +26,9 @@ const MODELS: &[(&str, &str, &str)] = &[
 ];
 
 const HUGGINGFACE_BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
-const DOWNLOAD_TIMEOUT_SECONDS: u64 = 600;
+const PARAKEET_BASE_URL: &str =
+    "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main";
+const DOWNLOAD_TIMEOUT_SECONDS: u64 = 900;
 const MAX_RETRIES: u32 = 3;
 const RETRY_DELAY_MS: u64 = 2000;
 
@@ -61,7 +64,11 @@ pub fn run_model(args: ModelArgs) -> Result<()> {
     }
 }
 
-fn run_model_download(name: &str, force: bool, paths: &Paths) -> Result<()> {
+pub(crate) fn run_model_download(name: &str, force: bool, paths: &Paths) -> Result<()> {
+    if name == "parakeet-v3" {
+        return run_parakeet_download(force, paths);
+    }
+
     // Find model info
     let model_info = MODELS.iter().find(|(n, _, _)| *n == name).or_else(|| {
         // Try exact filename match
@@ -76,6 +83,7 @@ fn run_model_download(name: &str, force: bool, paths: &Paths) -> Result<()> {
             for (name, _, size) in MODELS {
                 println!("  {} ({})", name, size);
             }
+            println!("  parakeet-v3 (~640 MB, INT8)");
             return Ok(());
         }
     };
@@ -116,6 +124,55 @@ fn run_model_download(name: &str, force: bool, paths: &Paths) -> Result<()> {
     Ok(())
 }
 
+fn run_parakeet_download(force: bool, paths: &Paths) -> Result<()> {
+    if ParakeetBackend::find_onnxruntime_dylib().is_none() {
+        anyhow::bail!("ONNX Runtime not found.\n\n{}", ONNX_RUNTIME_HELP);
+    }
+
+    let parakeet_files = [
+        ("vocab.txt", "~92 KB"),
+        ("encoder-model.int8.onnx", "~622 MB"),
+        ("decoder_joint-model.int8.onnx", "~18 MB"),
+    ];
+
+    let target_dir = paths.models_dir.join("parakeet-v3");
+    fs::create_dir_all(&target_dir)?;
+
+    // Check if already downloaded
+    if !force {
+        let all_exist = parakeet_files
+            .iter()
+            .all(|(filename, _)| target_dir.join(filename).exists());
+        if all_exist {
+            println!(
+                "Parakeet v3 model already exists at: {}",
+                target_dir.display()
+            );
+            println!("Use --force to re-download");
+            return Ok(());
+        }
+    }
+
+    println!(
+        "Downloading Parakeet v3 model files to: {}",
+        target_dir.display()
+    );
+
+    for (filename, size) in &parakeet_files {
+        let target_path = target_dir.join(filename);
+        println!("Downloading {} ({})", filename, size);
+        let url = format!("{}/{}", PARAKEET_BASE_URL, filename);
+        download_with_progress(&url, &target_path)?;
+    }
+
+    println!("\nParakeet v3 model downloaded successfully!");
+    println!("You can now use it with:");
+    println!("  whisper-talk config set transcription.backend ParakeetV3");
+    println!("  whisper-talk config set transcription.model parakeet-v3");
+
+    Ok(())
+}
+
 fn run_model_list() -> Result<()> {
     println!("Available Whisper models:\n");
     println!("{:<18} {:<30} SIZE", "NAME", "FILENAME");
@@ -124,6 +181,14 @@ fn run_model_list() -> Result<()> {
     for (name, filename, size) in MODELS {
         println!("{:<18} {:<30} {}", name, filename, size);
     }
+
+    println!("\nAvailable Parakeet models:\n");
+    println!("{:<18} {:<30} SIZE", "NAME", "FILES");
+    println!("{}", "-".repeat(60));
+    println!(
+        "{:<18} {:<30} ~640 MB",
+        "parakeet-v3", "encoder/decoder/vocab"
+    );
 
     println!("\nModel variants:");
     println!("  .en models: English-only, slightly better for English");
@@ -172,6 +237,13 @@ fn run_model_status(paths: &Paths) -> Result<()> {
                             .unwrap_or(filename);
 
                         found_models.push((model_name.to_string(), path, size));
+                    } else if path.is_dir() && filename == "parakeet-v3" {
+                        let total_size = compute_dir_size(&path);
+                        found_models.push((
+                            "parakeet-v3".to_string(),
+                            path,
+                            format_size(total_size),
+                        ));
                     }
                 }
             }
@@ -195,6 +267,23 @@ fn run_model_status(paths: &Paths) -> Result<()> {
     Ok(())
 }
 
+fn compute_dir_size(path: &std::path::Path) -> u64 {
+    let mut total = 0u64;
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Ok(meta) = fs::metadata(&path) {
+                    total += meta.len();
+                }
+            } else if path.is_dir() {
+                total += compute_dir_size(&path);
+            }
+        }
+    }
+    total
+}
+
 fn find_existing_model(paths: &Paths, filename: &str) -> Option<PathBuf> {
     for dir in &paths.model_search_dirs {
         let path = dir.join(filename);
@@ -212,6 +301,7 @@ fn download_with_progress(url: &str, target_path: &PathBuf) -> Result<()> {
         .build()?;
 
     let mut last_error = None;
+    let part_path = target_path.with_extension("part");
 
     for attempt in 1..=MAX_RETRIES {
         if attempt > 1 {
@@ -225,9 +315,9 @@ fn download_with_progress(url: &str, target_path: &PathBuf) -> Result<()> {
                 eprintln!("Download attempt {} failed: {}", attempt, e);
                 last_error = Some(e);
 
-                // Clean up partial download
-                if target_path.exists() {
-                    let _ = fs::remove_file(target_path);
+                // Clean up partial download, but leave any existing complete file intact.
+                if part_path.exists() {
+                    let _ = fs::remove_file(&part_path);
                 }
             }
         }
@@ -265,7 +355,10 @@ fn try_download(
         pb
     };
 
-    let file = File::create(target_path)?;
+    // Write to a temporary .part file and atomically rename on success so
+    // interrupted downloads are never left as complete-looking target files.
+    let part_path = target_path.with_extension("part");
+    let file = File::create(&part_path)?;
     let mut writer = BufWriter::new(file);
 
     let bytes = response.bytes()?;
@@ -277,6 +370,21 @@ fn try_download(
     }
 
     writer.flush()?;
+
+    // Validate size if the server advertised one.
+    if total_size > 0 {
+        let actual_size = fs::metadata(&part_path)?.len();
+        if actual_size != total_size {
+            fs::remove_file(&part_path)?;
+            anyhow::bail!(
+                "Downloaded size mismatch: expected {} bytes, got {}",
+                total_size,
+                actual_size
+            );
+        }
+    }
+
+    fs::rename(&part_path, target_path)?;
     pb.finish_with_message("Download complete");
 
     Ok(())

@@ -9,7 +9,7 @@ use crate::injection::TextInjector;
 use crate::input::GlobalShortcuts;
 use crate::instance_lock::InstanceLock;
 use crate::paths::Paths;
-use crate::transcription::{TranscriptSegment, WhisperBackend};
+use crate::transcription::{Backend, TranscriptSegment};
 use crate::types::{Config, RecordingMode};
 use crate::visualizer::daemon::MicOsdDaemon;
 use anyhow;
@@ -33,7 +33,7 @@ pub struct Application {
     config: Arc<Mutex<Config>>,
     paths: Arc<Paths>,
     audio_capture: Arc<Mutex<Option<AudioCapture>>>,
-    whisper_backend: Arc<Mutex<Option<WhisperBackend>>>,
+    transcription_backend: Arc<Mutex<Option<Backend>>>,
     global_shortcuts: Arc<Mutex<Option<GlobalShortcuts>>>,
     text_injector: Arc<Mutex<Option<TextInjector>>>,
     audio_feedback: Arc<Mutex<Option<AudioFeedback>>>,
@@ -77,7 +77,7 @@ impl Application {
             config: Arc::new(Mutex::new(loaded_config)),
             paths,
             audio_capture: Arc::new(Mutex::new(None)),
-            whisper_backend: Arc::new(Mutex::new(None)),
+            transcription_backend: Arc::new(Mutex::new(None)),
             global_shortcuts: Arc::new(Mutex::new(None)),
             text_injector: Arc::new(Mutex::new(None)),
             audio_feedback: Arc::new(Mutex::new(None)),
@@ -110,8 +110,8 @@ impl Application {
         let audio = AudioCapture::new(&config.audio)?;
         *self.audio_capture.lock() = Some(audio);
 
-        let whisper = WhisperBackend::new(&config.transcription);
-        *self.whisper_backend.lock() = Some(whisper);
+        let backend = Backend::new(&config.transcription);
+        *self.transcription_backend.lock() = Some(backend);
 
         let text_injector = TextInjector::new(&config.injection);
         *self.text_injector.lock() = Some(text_injector);
@@ -439,7 +439,7 @@ impl Application {
         prompt: Option<&str>,
         translate: bool,
     ) -> Result<String> {
-        let backend = self.whisper_backend.clone();
+        let backend = self.transcription_backend.clone();
         let audio_vec = audio_data.to_vec();
         let language = language.map(str::to_owned);
         let prompt = prompt.map(str::to_owned);
@@ -448,7 +448,7 @@ impl Application {
             let mut wb = backend.lock();
             let b = wb
                 .as_mut()
-                .ok_or_else(|| anyhow::anyhow!("Whisper backend not loaded"))?;
+                .ok_or_else(|| anyhow::anyhow!("Transcription backend not loaded"))?;
             b.transcribe_with_options(
                 &audio_vec,
                 language.as_deref(),
@@ -484,19 +484,14 @@ impl Application {
         language: Option<String>,
         prompt: Option<String>,
     ) -> Result<Vec<TranscriptSegment>> {
-        let backend = self.whisper_backend.clone();
+        let backend = self.transcription_backend.clone();
 
         tokio::task::spawn_blocking(move || {
             let mut wb = backend.lock();
             let b = wb
                 .as_mut()
-                .ok_or_else(|| anyhow::anyhow!("Whisper backend not loaded"))?;
-            b.transcribe_with_segments(
-                &audio_data,
-                language.as_deref(),
-                prompt.as_deref(),
-                false,
-            )
+                .ok_or_else(|| anyhow::anyhow!("Transcription backend not loaded"))?;
+            b.transcribe_with_segments(&audio_data, language.as_deref(), prompt.as_deref(), false)
         })
         .await
         .map_err(|e| WhisperTalkError::Transcription(format!("Join error: {}", e)))?
@@ -597,11 +592,11 @@ impl OwnedApplication {
         let shortcuts_clone = shortcuts.clone();
         *self.inner.global_shortcuts.lock() = Some(shortcuts);
 
-        println!("Starting Whisper backend...");
-        let mut backend = self.inner.whisper_backend.lock();
+        println!("Starting transcription backend...");
+        let mut backend = self.inner.transcription_backend.lock();
         if let Some(ref mut wb) = backend.as_mut() {
             if !wb.initialize(&self.inner.paths)? {
-                println!("WARNING: Whisper backend not initialized, model may not exist");
+                println!("WARNING: Transcription backend not initialized, model may not exist");
             }
         }
         drop(backend);
