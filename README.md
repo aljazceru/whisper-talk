@@ -1,17 +1,30 @@
 # whisper-talk
 
-System-wide voice dictation for Linux with Whisper backend.
+System-wide voice dictation for Linux with Whisper and Parakeet-v3 backends.
 
 ## Overview
 
-**whisper-talk** is a lightweight, efficient voice dictation daemon for Linux that provides system-wide speech-to-text functionality. Press a global hotkey, speak, have your text injected into clipboard so you can paste it into any application.
+**whisper-talk** is a lightweight, efficient voice dictation daemon for Linux that provides system-wide, local speech-to-text with either Whisper or NVIDIA Parakeet-v3. Press a global hotkey, speak, and have the transcribed text copied to your clipboard so you can paste it into any application.
 
 ### Key Features
 
 - **Privacy-focused** - Local transcription only, no cloud services required
+- **Two transcription backends** - Whisper for broad model and translation support, or Parakeet-v3 for fast multilingual transcription
+- **CPU and GPU acceleration** - CPU by default, NVIDIA CUDA and AMD ROCm where supported
 - **Recording modes** - Toggle, Push-to-Talk, and Auto (hybrid) modes
 - **System integration** - systemd service, desktop notifications
 - **Low resource usage** - Written in Rust for efficiency
+
+### Backend and GPU Support
+
+| Backend | CPU | NVIDIA CUDA | AMD ROCm | Translation to English |
+|---------|-----|-------------|----------|------------------------|
+| Whisper | Yes | `--features cuda` | `--features hipblas` | Yes |
+| Parakeet-v3 | Yes | `--features cuda` | Yes, with a ROCm-enabled ONNX Runtime | No |
+
+Parakeet-v3 requires a compatible ONNX Runtime 1.20.1 shared library for CPU,
+CUDA, or ROCm. See [INSTALL.md](INSTALL.md) for platform-specific runtime and
+driver setup.
 
 ### How It Works
 
@@ -19,7 +32,7 @@ System-wide voice dictation for Linux with Whisper backend.
 2. whisper-talk starts recording from your microphone
 3. Speak your text
 4. Press the shortcut again
-5. Audio is transcribed locally using Whisper 
+5. Audio is transcribed locally using your selected Whisper or Parakeet-v3 backend
 6. Transcribed text is injected into clipboard
 
 ## Quick Start
@@ -30,6 +43,8 @@ System-wide voice dictation for Linux with Whisper backend.
 - Rust 1.70+ for building from source
 - Microphone input device
 - ydotool for clipboard injection
+- ONNX Runtime 1.20.1 when using Parakeet-v3
+- CUDA or ROCm libraries only when building for the corresponding GPU backend
 
 ### Installation
 
@@ -38,15 +53,21 @@ System-wide voice dictation for Linux with Whisper backend.
 git clone https://github.com/aljazceru/whisper-talk.git
 cd whisper-talk
 
-# Install system dependencies (Fedora)
-sudo dnf install alsa-lib-devel pulseaudio-libs-devel ydotool rocm-devel  
+# Install base system dependencies (Fedora)
+sudo dnf install alsa-lib-devel pulseaudio-libs-devel ydotool
 
 # Or for Ubuntu/Debian
-sudo apt install libasound2-dev libpulse-dev ydotool librocm-dev
+sudo apt install libasound2-dev libpulse-dev ydotool
 
-# Build and install
-cargo build --release
+# Build and install for CPU
 cargo install --path .
+
+# Or build and install with NVIDIA CUDA support for Whisper and Parakeet-v3
+cargo install --path . --features cuda
+
+# Or build and install with AMD ROCm support for Whisper
+# Parakeet-v3 uses a separately installed ROCm-enabled ONNX Runtime.
+cargo install --path . --features hipblas
 
 # Run setup wizard
 whisper-talk setup
@@ -56,14 +77,28 @@ whisper-talk setup
 
 The interactive setup wizard guides you through:
 
-1. Selecting a transcription backend (Whisper recommended)
-2. Choosing a model size (tiny, base, small, medium, large-v3)
+1. Selecting Whisper or Parakeet-v3 as the transcription backend
+2. Choosing a Whisper model size, or downloading the Parakeet-v3 model
 3. Selecting your audio input device
 4. Setting up user permissions
 5. Optionally installing systemd service
 
 ```bash
 whisper-talk setup
+```
+
+You can also download and select a backend manually:
+
+```bash
+# Whisper (default)
+whisper-talk model download base
+whisper-talk config set transcription.backend whisper
+whisper-talk config set transcription.model base
+
+# Parakeet-v3 (install ONNX Runtime 1.20.1 first)
+whisper-talk model download parakeet-v3
+whisper-talk config set transcription.backend parakeet_v3
+whisper-talk config set transcription.model parakeet-v3
 ```
 
 ### Basic Usage
@@ -118,7 +153,7 @@ Response:
 Supported uploads include WAV by default and common formats like MP3/OGG/FLAC when detected.
 Response format is JSON by default and `text` when `response_format=text`.
 
-Translation requests are also available:
+Whisper also supports translation requests to English:
 
 ```bash
 curl -X POST \
@@ -127,6 +162,8 @@ curl -X POST \
   -F prompt="Translate the audio to English" \
   http://127.0.0.1:11434/v1/audio/translations
 ```
+
+The Parakeet-v3 backend supports transcription only and returns an unsupported-operation error for this endpoint.
 
 ## Configuration
 
@@ -244,7 +281,9 @@ journalctl --user -u whisper-talk -f
 ### Performance issues
 
 - Reduce model size (use `tiny` or `base` instead of `medium` or `large-v3`)
-- Enable GPU acceleration (CUDA/ROCm) for Whisper backend
+- Build with `--features cuda` for NVIDIA acceleration with Whisper or Parakeet-v3
+- Build with `--features hipblas` for AMD ROCm acceleration with Whisper
+- Install a ROCm-enabled ONNX Runtime 1.20.1 for AMD acceleration with Parakeet-v3
 
 ## Inspiration
 
