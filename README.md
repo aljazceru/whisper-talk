@@ -10,10 +10,9 @@ System-wide voice dictation for Linux with Whisper and Parakeet-v3 backends.
 
 - **Privacy-focused** - Local transcription only, no cloud services required
 - **Two transcription backends** - Whisper for broad model and translation support, or Parakeet-v3 for fast multilingual transcription
-- **CPU and GPU acceleration** - CPU by default, NVIDIA CUDA and AMD ROCm where supported
+- **CPU and GPU acceleration** - CPU by default, NVIDIA CUDA and AMD ROCm support
 - **Recording modes** - Toggle, Push-to-Talk, and Auto (hybrid) modes
-- **System integration** - systemd service, desktop notifications
-- **Low resource usage** - Written in Rust for efficiency
+- **OpenAI compatible whisper endpoint** - Use it in other applications as well
 
 ### Backend and GPU Support
 
