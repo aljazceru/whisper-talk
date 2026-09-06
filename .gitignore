@@ -4,3 +4,5 @@
 /target_check
 config-backup.json
 __pycache__
+
+.planning/debug/
