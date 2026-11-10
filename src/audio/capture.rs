@@ -96,12 +96,11 @@ impl AudioCapture {
         if self.is_recording.load(Ordering::Relaxed) {
             return Ok(());
         }
-        self.is_recording.store(true, Ordering::Relaxed);
-
         *self.audio_buffer.lock() = Vec::new();
         self.audio_level.store(0u32, Ordering::Relaxed);
 
         self.initialize_stream()?;
+        self.is_recording.store(true, Ordering::Relaxed);
 
         Ok(())
     }
