@@ -26,6 +26,32 @@ whisper-talk follows XDG Base Directory specifications:
 | State | `~/.local/state/whisper-talk/` |
 | Cache | `~/.cache/whisper-talk/` |
 
+### Tray control panel
+
+Build with `--features gui` to enable the optional control panel (default builds
+are headless). On a graphical desktop, that build starts hidden in the system tray.
+Open **Show Settings** from its microphone icon, or start with
+`whisper-talk daemon --show-settings`. The panel configures backend, installed
+model, and microphone; **Apply** validates and prepares replacements before
+atomically saving the file and switching the running daemon. Failed changes
+leave the previous working configuration intact.
+
+The microphone list includes **System default** and a **Refresh** action.
+Explicit selections store the device's exact reported name and clear stale
+numeric/vendor/model selectors. A disconnected configured device remains
+listed as unavailable; changing another field does not silently discard it.
+The panel shows daemon status and the latest 100 operational errors.
+
+Backend and audio settings can also be reloaded after editing the file:
+
+```bash
+systemctl --user kill --signal=HUP whisper-talk.service
+```
+
+Reload is rejected while recording or processing. Changes to shortcuts,
+injection, feedback, or `api_bind` require a daemon restart. A rejected SIGHUP
+reload retains the live settings but does not undo your edits on disk.
+
 ## Configuration Structure
 
 The configuration file is JSON with the following top-level sections:
@@ -122,7 +148,7 @@ Controls audio input device and detection settings.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `device_id` | integer | `null` | ALSA/PulseAudio device ID |
+| `device_id` | integer | `null` | CPAL input-device enumeration index (not an ALSA card number) |
 | `device_name` | string | `null` | Device name for matching |
 | `device_vendor_id` | string | `null` | USB vendor ID for matching |
 | `device_model_id` | string | `null` | USB model ID for matching |
@@ -133,9 +159,9 @@ Controls audio input device and detection settings.
 
 whisper-talk uses a priority order for device selection:
 
-1. `device_id` (exact match)
-2. `device_name` + `device_vendor_id` + `device_model_id` (USB match)
-3. `device_name` (partial match)
+1. `device_vendor_id` + `device_model_id` (both substrings in the reported device name)
+2. `device_name` (exact match)
+3. `device_id` (input-device enumeration index)
 4. Default system input device
 
 #### Finding Your Device ID
@@ -158,11 +184,15 @@ card 1: USB [USB Microphone], device 0: USB Audio [USB Audio]
   Subdevice #0: subdevice #0
 ```
 
-Device ID format: `1,0` (card,device)
+ALSA card/device numbers such as `1,0` are not valid `device_id` values.
+Enumeration indices can change after hotplug; prefer the panel's name-based
+selection.
 
 #### USB Device Matching
 
-For USB microphones, you can match by vendor/model ID:
+The legacy vendor/model selectors match substrings in CPAL's reported device
+name; they do not look up USB descriptors. Prefer the panel or an exact device
+name unless the reported name actually contains both IDs.
 
 ```bash
 # Find USB device IDs
@@ -185,7 +215,7 @@ lsusb | grep -i microphone
 
 #### Device Name Matching
 
-Partial string match against device name:
+Exact string match against the name reported by the setup wizard or tray panel:
 
 ```json
 {
@@ -195,7 +225,7 @@ Partial string match against device name:
 }
 ```
 
-Matches: "USB Microphone", "USB Microphone XYZ", "My USB Microphone"
+Matches only `"USB Microphone"`, not `"USB Microphone XYZ"` or `"My USB Microphone"`.
 
 ### mute_detection
 

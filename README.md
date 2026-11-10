@@ -13,6 +13,7 @@ System-wide voice dictation for Linux with Whisper and Parakeet-v3 backends.
 - **CPU and GPU acceleration** - CPU by default, NVIDIA CUDA and AMD ROCm support
 - **Recording modes** - Toggle, Push-to-Talk, and Auto (hybrid) modes
 - **OpenAI compatible whisper endpoint** - Use it in other applications as well
+- **Optional tray control panel** - Build with `--features gui` to configure the backend and microphone and inspect recent errors
 
 ### Backend and GPU Support
 
@@ -39,11 +40,12 @@ driver setup.
 ### Prerequisites
 
 - Linux system (Fedora, Ubuntu, Arch, or derivative)
-- Rust 1.70+ for building from source
+- Rust 1.92+ for building from source
 - Microphone input device
 - ydotool for clipboard injection
 - ONNX Runtime 1.20.1 when using Parakeet-v3
 - CUDA or ROCm libraries only when building for the corresponding GPU backend
+- Optional GUI: GTK 4.10+ development libraries and a StatusNotifier tray host for hidden startup
 
 ### Installation
 
@@ -53,20 +55,20 @@ git clone https://github.com/aljazceru/whisper-talk.git
 cd whisper-talk
 
 # Install base system dependencies (Fedora)
-sudo dnf install alsa-lib-devel pulseaudio-libs-devel ydotool
+sudo dnf install alsa-lib-devel pulseaudio-libs-devel systemd-devel ydotool wl-clipboard
 
 # Or for Ubuntu/Debian
-sudo apt install libasound2-dev libpulse-dev ydotool
+sudo apt install libasound2-dev libpulse-dev libudev-dev ydotool wl-clipboard
 
 # Build and install for CPU
-cargo install --path .
+cargo install --locked --path .
 
 # Or build and install with NVIDIA CUDA support for Whisper and Parakeet-v3
-cargo install --path . --features cuda
+cargo install --locked --path . --features cuda
 
 # Or build and install with AMD ROCm support for Whisper
 # Parakeet-v3 uses a separately installed ROCm-enabled ONNX Runtime.
-cargo install --path . --features hipblas
+cargo install --locked --path . --features hipblas
 
 # Run setup wizard
 whisper-talk setup
@@ -103,7 +105,7 @@ whisper-talk config set transcription.model parakeet-v3
 ### Basic Usage
 
 ```bash
-# Start the daemon
+# Start the daemon (headless by default)
 whisper-talk daemon
 
 # Or run in background with systemd
@@ -111,6 +113,39 @@ systemctl --user start whisper-talk
 
 # Press SUPER+ALT+D to start/stop recording
 ```
+
+### Optional GUI
+
+Install `gtk4-devel` (Fedora), `libgtk-4-dev` (Ubuntu/Debian), or `gtk4` (Arch)
+before enabling the GUI feature.
+
+Build with `cargo install --locked --path . --features gui` to include the
+control panel. GUI-enabled builds start hidden in the tray on a graphical
+desktop. GPU features can be combined, for example `--features gui,cuda`.
+
+Open **Show Settings** from the microphone tray icon to select **Whisper** or
+**Parakeet v3**, enter an installed model name, and choose a microphone. **Apply**
+loads the replacement backend before saving and switching; a failed change
+leaves the working settings intact. Download models with `whisper-talk model
+download <model>` first. Recording/processing disables Apply.
+
+Closing the window hides it; **Quit** stops dictation too. If no tray host is
+available, the window opens instead, and closing it quits. GNOME requires a
+StatusNotifier/AppIndicator extension for tray icons.
+
+```bash
+# Start with settings visible
+whisper-talk daemon --show-settings
+
+# Run without a desktop window or tray
+whisper-talk daemon --no-gui
+
+# Build without GTK/tray dependencies
+cargo install --locked --path .
+```
+
+The panel keeps the latest 100 operational errors for this process. It does not
+replace service logs: `journalctl --user -u whisper-talk`.
 
 ## OpenAI-Compatible API
 
@@ -225,6 +260,33 @@ systemctl --user start whisper-talk
 # Check status
 systemctl --user status whisper-talk
 ```
+
+For the tray to appear, the user service must inherit the graphical session's
+display and D-Bus environment. If it starts headless, import the display
+environment from a desktop terminal, then restart:
+
+```bash
+systemctl --user import-environment DISPLAY WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
+systemctl --user restart whisper-talk
+```
+
+### Dependency maintenance
+
+Use `--locked` for reproducible builds and `cargo audit` to check the lockfile.
+The November 2026 audit updated vulnerable TLS/network dependencies and moved
+Rodio to 0.23, sharing CPAL 0.18 with microphone capture. The resulting lockfile
+has no reported vulnerabilities, but these maintenance constraints remain:
+
+| Dependency | Retained version | Reason |
+|------------|------------------|--------|
+| Parakeet / ORT | Vendored 0.3.7 / 2.0.0-rc.13 | The graph-optimization patch and `api-20` preserve ONNX Runtime 1.20.1 / ROCm compatibility |
+| zbus / notify-rust | 5.19 / 4.18.2 | A coordinated major migration is needed; current ksni also requires zbus 5 |
+| dirs | 6.0 | Version 7 changes home-directory behavior; no security fix requires the change |
+
+`cargo audit` still reports four **unmaintained** warnings: `paste` through
+Parakeet's tokenizer, and `zbus_names`, `zvariant`, `zvariant_derive` through the
+D-Bus stack. A direct zbus upgrade alone cannot remove the transitive warnings.
+Native ONNX Runtime and GPU drivers are managed separately from Cargo.
 
 ## Troubleshooting
 

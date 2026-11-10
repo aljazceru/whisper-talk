@@ -7,20 +7,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 
-/// Wrapper to make non-Send stream types usable in Send contexts.
-/// This is safe because the stream is always accessed through a mutex.
-struct SendableStream(Option<Box<dyn StreamTrait>>);
-
-// SAFETY: We ensure single-threaded access through the Mutex wrapper.
-// The stream is never actually sent across threads, it's just stored
-// in a struct that needs to be Send.
-unsafe impl Send for SendableStream {}
-unsafe impl Sync for SendableStream {}
-
 pub struct AudioCapture {
     is_recording: Arc<AtomicBool>,
     audio_buffer: Arc<Mutex<Vec<f32>>>,
     audio_level: Arc<AtomicU32>,
+    stream_error: Arc<Mutex<Option<String>>>,
     device_id: Arc<Mutex<Option<u32>>>,
     device_name: Arc<Mutex<Option<String>>>,
     device_vendor_id: Arc<Mutex<Option<String>>>,
@@ -30,7 +21,7 @@ pub struct AudioCapture {
     target_sample_rate: u32,
     target_channels: u16,
     zero_volume_threshold: f32,
-    stream: Arc<Mutex<SendableStream>>,
+    stream: Arc<Mutex<Option<cpal::Stream>>>,
     recovery_in_progress: Arc<AtomicBool>,
     abort_recovery: Arc<AtomicBool>,
     is_recovering: Arc<AtomicBool>,
@@ -44,6 +35,7 @@ impl AudioCapture {
             is_recording: Arc::new(AtomicBool::new(false)),
             audio_buffer: Arc::new(Mutex::new(Vec::new())),
             audio_level: Arc::new(AtomicU32::new(0)),
+            stream_error: Arc::new(Mutex::new(None)),
             device_id: Arc::new(Mutex::new(config.device_id)),
             device_name: Arc::new(Mutex::new(config.device_name.clone())),
             device_vendor_id: Arc::new(Mutex::new(config.device_vendor_id.clone())),
@@ -52,7 +44,7 @@ impl AudioCapture {
             target_sample_rate: 16000,
             target_channels: 1,
             zero_volume_threshold: config.zero_volume_threshold,
-            stream: Arc::new(Mutex::new(SendableStream(None))),
+            stream: Arc::new(Mutex::new(None)),
             recovery_in_progress: Arc::new(AtomicBool::new(false)),
             abort_recovery: Arc::new(AtomicBool::new(false)),
             is_recovering: Arc::new(AtomicBool::new(false)),
@@ -72,7 +64,7 @@ impl AudioCapture {
                 if let Ok(default_config) = device.default_input_config() {
                     let default_sr: u32 = default_config.sample_rate();
                     devices.push(DeviceInfo {
-                        name: name.to_string(),
+                        name: name.name().to_string(),
                         id: Some(index as u32),
                         default_sample_rate: default_sr,
                         max_channels: default_config.channels(),
@@ -81,6 +73,10 @@ impl AudioCapture {
             }
         }
         Ok(devices)
+    }
+
+    pub fn take_stream_error(&self) -> Option<String> {
+        self.stream_error.lock().take()
     }
 
     pub fn get_audio_level(&self) -> f32 {
@@ -181,18 +177,13 @@ impl AudioCapture {
             .unwrap_or_else(|_| "Unknown".to_string());
         println!("Using audio device: {}", device_name);
 
-        let mut supported_configs_range = device.supported_input_configs().map_err(|e| {
-            WhisperTalkError::Audio(format!("Failed to get supported configs: {}", e))
+        let supported_config = device.default_input_config().map_err(|e| {
+            WhisperTalkError::Audio(format!("Failed to get default input config: {}", e))
         })?;
-
-        let supported_config = supported_configs_range.next().ok_or_else(|| {
-            WhisperTalkError::Audio("No supported audio config found".to_string())
-        })?;
-
-        let config: StreamConfig = supported_config.with_max_sample_rate().into();
+        let sample_format = supported_config.sample_format();
+        let config: StreamConfig = supported_config.into();
         let input_sample_rate: u32 = config.sample_rate;
         let input_channels = config.channels;
-        let sample_format = supported_config.sample_format();
 
         self.sample_rate = input_sample_rate; // Store actual sample rate
 
@@ -215,7 +206,7 @@ impl AudioCapture {
             }
         };
 
-        *self.stream.lock() = SendableStream(Some(stream));
+        *self.stream.lock() = Some(stream);
         Ok(())
     }
 
@@ -224,7 +215,7 @@ impl AudioCapture {
         device: &cpal::Device,
         config: &StreamConfig,
         input_channels: u16,
-    ) -> Result<Box<dyn StreamTrait>>
+    ) -> Result<cpal::Stream>
     where
         T: cpal::Sample + cpal::SizedSample + Send + Sync + 'static,
         f32: cpal::FromSample<T>,
@@ -233,6 +224,7 @@ impl AudioCapture {
         let is_recording_clone = self.is_recording.clone();
         let audio_buffer_clone = self.audio_buffer.clone();
         let audio_level_clone = self.audio_level.clone();
+        let stream_error = self.stream_error.clone();
         let _target_sample_rate = self.target_sample_rate;
         let target_channels = self.target_channels;
         let input_channels = input_channels as usize;
@@ -261,18 +253,20 @@ impl AudioCapture {
                 audio_buffer_clone.lock().extend_from_slice(&samples);
             },
             move |err| {
-                eprintln!("Audio stream error: {:?}", err);
+                let message = format!("Audio stream error: {err}");
+                eprintln!("{message}");
+                *stream_error.lock() = Some(message);
             },
             None,
         )?;
 
         stream.play()?;
 
-        Ok(Box::new(stream))
+        Ok(stream)
     }
 
     fn terminate_stream(&self) {
-        if let Some(stream) = self.stream.lock().0.take() {
+        if let Some(stream) = self.stream.lock().take() {
             let _ = stream.pause();
         }
     }

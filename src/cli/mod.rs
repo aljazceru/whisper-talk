@@ -66,7 +66,7 @@ pub enum Commands {
     Uninstall(UninstallArgs),
 }
 
-#[derive(clap::Args, Debug)]
+#[derive(clap::Args, Debug, Clone)]
 pub struct DaemonArgs {
     #[arg(
         long,
@@ -75,6 +75,18 @@ pub struct DaemonArgs {
         help = "Address to bind the OpenAI-compatible transcription API (or set `api_bind` in config)"
     )]
     pub api_bind: Option<SocketAddr>,
+
+    #[arg(
+        long,
+        help = "Run headless without the tray/settings GUI (default when no display is available)"
+    )]
+    pub no_gui: bool,
+
+    #[arg(
+        long,
+        help = "Show the settings panel at startup instead of only the tray icon"
+    )]
+    pub show_settings: bool,
 }
 
 pub fn run_cli(cli: Cli) -> Result<()> {

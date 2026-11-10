@@ -5,7 +5,7 @@ Wants=pipewire.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/whisper-talk
+ExecStart=/usr/local/bin/whisper-talk daemon
 Restart=on-failure
 RestartSec=5
 

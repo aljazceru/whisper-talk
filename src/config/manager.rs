@@ -42,12 +42,18 @@ impl ConfigManager {
         let content = serde_json::to_string_pretty(&self.config)
             .map_err(|e| WhisperTalkError::Config(format!("Failed to serialize config: {}", e)))?;
 
-        let mut file = fs::File::create(&self.paths.config_file).map_err(|e| {
-            WhisperTalkError::Config(format!("Failed to create config file: {}", e))
+        let mut file = tempfile::NamedTempFile::new_in(&self.paths.config_dir).map_err(|e| {
+            WhisperTalkError::Config(format!("Failed to create temporary config file: {}", e))
         })?;
 
         file.write_all(content.as_bytes())
             .map_err(|e| WhisperTalkError::Config(format!("Failed to write config file: {}", e)))?;
+        file.as_file()
+            .sync_all()
+            .map_err(|e| WhisperTalkError::Config(format!("Failed to sync config file: {}", e)))?;
+        file.persist(&self.paths.config_file).map_err(|e| {
+            WhisperTalkError::Config(format!("Failed to replace config file: {}", e.error))
+        })?;
 
         Ok(())
     }
@@ -91,5 +97,64 @@ impl ConfigManager {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+
+    fn manager(dir: &std::path::Path) -> ConfigManager {
+        ConfigManager::new(Paths {
+            config_dir: dir.into(),
+            config_file: dir.join("config.json"),
+            data_dir: dir.into(),
+            state_dir: dir.into(),
+            cache_dir: dir.into(),
+            models_dir: dir.into(),
+            model_search_dirs: Vec::new(),
+            assets_dir: dir.into(),
+            lock_file: dir.join("lock"),
+            recording_status_file: dir.join("recording_status"),
+            audio_level_file: dir.join("audio_level"),
+            recovery_result_file: dir.join("recovery_result"),
+            recovery_requested_file: dir.join("recovery_requested"),
+            mic_zero_volume_file: dir.join("mic_zero_volume"),
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn save_keeps_existing_readers_on_complete_previous_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut manager = manager(dir.path());
+        let previous = manager.get_config().clone();
+        let mut reader = fs::File::open(manager.get_config_path()).unwrap();
+        manager.get_config_mut().transcription.model = "base".into();
+        manager.save().unwrap();
+
+        let mut content = String::new();
+        reader.read_to_string(&mut content).unwrap();
+        assert_eq!(serde_json::from_str::<Config>(&content).unwrap(), previous);
+        manager.load().unwrap();
+        assert_eq!(manager.get_config().transcription.model, "base");
+    }
+
+    #[test]
+    fn failed_replace_leaves_destination_and_cleans_temporary_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut manager = manager(dir.path());
+        let destination = dir.path().join("existing-directory");
+        fs::create_dir(&destination).unwrap();
+        fs::write(destination.join("keep"), "untouched").unwrap();
+        manager.paths.config_file = destination.clone();
+
+        assert!(manager.save().is_err());
+        assert_eq!(
+            fs::read_to_string(destination.join("keep")).unwrap(),
+            "untouched"
+        );
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2);
     }
 }

@@ -28,9 +28,11 @@ Before installing whisper-talk, ensure your system meets the following requireme
 
 ### Software Requirements
 
-- **Rust**: 1.70 or later (for building from source)
+- **Rust**: 1.92 or later (for building from source)
 - **C Compiler**: gcc or clang
 - **Audio Libraries**: ALSA development libraries
+- **GTK 4.10+ development libraries**: only for the optional `--features gui` build
+- **Session D-Bus and StatusNotifier host**: for the tray icon; without a tray host the settings window remains accessible
 - **ONNX Runtime 1.20.1**: required only for the Parakeet-v3 backend
 - **CUDA toolkit**: optional, for NVIDIA GPU acceleration
 - **ROCm**: optional, for AMD GPU acceleration
@@ -46,7 +48,7 @@ ONNX Runtime URLs.
 #### Install System Dependencies
 
 ```bash
-sudo dnf install alsa-lib-devel pulseaudio-libs-devel gcc pkg-config
+sudo dnf install alsa-lib-devel pulseaudio-libs-devel systemd-devel gcc pkg-config
 ```
 
 #### Optional: GPU support
@@ -123,6 +125,7 @@ sudo apt update
 sudo apt install \
     libasound2-dev \
     libpulse-dev \
+    libudev-dev \
     build-essential \
     pkg-config
 ```
@@ -321,6 +324,24 @@ cargo build --release
 
 # The release binary will be at target/release/whisper-talk
 ```
+
+Use `--locked` when building or installing to use the audited dependency
+versions. The default build is headless and does not require GTK. To include
+the optional tray control panel, install GTK 4.10+ development libraries and build:
+The optional GTK package is `gtk4-devel` on Fedora, `libgtk-4-dev` on
+Ubuntu/Debian, or `gtk4` on Arch.
+
+```bash
+cargo build --release --locked --features gui
+```
+
+With the `gui` feature, `whisper-talk daemon` starts hidden in the tray when a
+graphical display is available. Use `daemon --show-settings` to open the panel immediately, or
+`daemon --no-gui` to keep a GUI-capable binary headless. Closing the panel hides
+it when a tray is available; **Quit** stops the daemon.
+
+GNOME needs a StatusNotifier/AppIndicator extension to display the tray icon.
+Without a tray host, the panel opens automatically and closing it quits.
 
 ### Optional Features
 

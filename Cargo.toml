@@ -2,6 +2,7 @@
 name = "whisper-talk"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.92"
 authors = ["Aljaz Ceru <aljaz@disobey.dev>"]
 description = "System-wide voice dictation for Linux with Whisper and Parakeet backends"
 repository = "https://github.com/aljazceru/whisper-talk"
@@ -33,7 +34,7 @@ features = ["all-formats", "all-codecs"]
 version = "5.0"
 
 [dependencies.rodio]
-version = "0.22"
+version = "0.23"
 default-features = false
 features = ["playback", "vorbis"]
 
@@ -114,6 +115,16 @@ version = "1.0"
 [dependencies.thiserror]
 version = "2.0"
 
+[dependencies.gtk]
+version = "0.11"
+package = "gtk4"
+optional = true
+features = ["v4_10"] # gtk::accessible (update_property) is gated on v4_10
+
+[dependencies.ksni]
+version = "0.3"
+optional = true
+
 [dependencies.parking_lot]
 version = "0.12"
 
@@ -123,14 +134,15 @@ version = "1.20"
 [dependencies.regex]
 version = "1.11"
 
-[dev-dependencies]
-tempfile = "3.27"
+[dependencies.tempfile]
+version = "3.27"
 
 [patch.crates-io]
 parakeet-rs = { path = "vendor/parakeet-rs" }
 
 [features]
 default = []
+gui = ["dep:gtk", "dep:ksni"]
 notifications = ["notify-rust"]
 # GPU acceleration features
 cuda = ["whisper-rs/cuda", "ort/cuda"]
